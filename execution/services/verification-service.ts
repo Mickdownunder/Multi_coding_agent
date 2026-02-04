@@ -1,58 +1,27 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { join } from 'path';
 
 const execAsync = promisify(exec);
 
-export interface VerificationResult {
-  success: boolean;
-  output: string;
-  error?: string;
-}
-
 export class VerificationService {
   /**
-   * Runs TypeScript type checking
+   * Runs the playwright tests to verify UI functionality
    */
-  async runTypeCheck(): Promise<VerificationResult> {
+  async runUITests() {
     try {
-      const { stdout } = await execAsync('npx tsc --noEmit');
-      return { success: true, output: stdout || 'TypeScript check passed.' };
+      const { stdout, stderr } = await execAsync('npx playwright test tests/counter-functionality.spec.ts');
+      return {
+        success: true,
+        output: stdout,
+        error: stderr
+      };
     } catch (error: any) {
       return {
         success: false,
-        output: error.stdout || '',
-        error: error.stderr || error.message
+        output: error.stdout,
+        error: error.message
       };
     }
-  }
-
-  /**
-   * Runs Next.js build check
-   */
-  async runBuildCheck(): Promise<VerificationResult> {
-    try {
-      const { stdout } = await execAsync('npx next build');
-      return { success: true, output: stdout || 'Build successful.' };
-    } catch (error: any) {
-      return {
-        success: false,
-        output: error.stdout || '',
-        error: error.stderr || error.message
-      };
-    }
-  }
-
-  /**
-   * Runs all verification steps
-   */
-  async verifyAll(): Promise<{ types: VerificationResult; build: VerificationResult; allPassed: boolean }> {
-    const types = await this.runTypeCheck();
-    const build = await this.runBuildCheck();
-
-    return {
-      types,
-      build,
-      allPassed: types.success && build.success
-    };
   }
 }

@@ -29,10 +29,10 @@ async function saveTasks(tasks: Task[]): Promise<void> {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const tasks = await getTasks();
     
@@ -60,10 +60,10 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const tasks = await getTasks();
     
     const taskExists = tasks.some(t => t.id === id);

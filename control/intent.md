@@ -1,24 +1,14 @@
 # Intent
 
 ## Goal
-Create a system that can autonomously plan, implement, and verify software changes
-using a strict state-machine-driven workflow.
 
-## Primary Objective
-The system must be able to:
-- Start from an empty repository
-- Generate a project structure
-- Implement code according to explicit plans
-- Verify changes against rules
-- Converge to a DONE state without continuous human micromanagement
+Develop a lightweight, intuitive task management application that allows users to quickly capture and organize daily tasks with zero friction.
 
-## Constraints
-- Local-first (MacBook, filesystem-based)
-- Git as the single source of truth
-- Supabase will be used later for backend/state enforcement
-- No chat-based coordination between agents
+## Requirements
 
-## Non-Goals
-- No multi-user collaboration yet
-- No production deployment yet
-- No AI creativity or feature ideation
+- Add, edit, and delete tasks
+- Toggle task completion status
+- Persistent data storage (so tasks remain after a refresh)
+- A clean, distraction-free user interface
+- Mobile-responsive design
+

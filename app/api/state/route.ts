@@ -12,37 +12,62 @@ export async function GET() {
     const state = content.trim()
     return NextResponse.json({ state })
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    const err = error as NodeJS.ErrnoException
+    if (err.code === 'ENOENT') {
       return NextResponse.json(
-        { error: 'state.txt not found' },
+        { error: 'state.txt not found in /control directory' },
         { status: 404 }
       )
     }
+    const errorMessage = err.message || 'Unknown error'
     return NextResponse.json(
-      { error: 'Failed to read state.txt' },
+      { error: `Failed to read state.txt: ${errorMessage}` },
       { status: 500 }
     )
   }
 }
 
+// Valid state transitions
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  PLAN: ['IMPLEMENT'],
+  IMPLEMENT: ['VERIFY', 'FAIL'],
+  VERIFY: ['DONE', 'PLAN', 'FAIL'],
+  DONE: ['PLAN'],
+  FAIL: ['PLAN']
+}
+
 // POST /api/state - Write new state
 export async function POST(request: NextRequest) {
   try {
-    const { state } = await request.json()
+    const body = await request.json()
+    const { state, currentState } = body
     
+    // Validate state value
     const validStates = ['PLAN', 'IMPLEMENT', 'VERIFY', 'DONE', 'FAIL']
-    if (!validStates.includes(state)) {
+    if (!state || typeof state !== 'string' || !validStates.includes(state)) {
       return NextResponse.json(
         { error: `Invalid state. Must be one of: ${validStates.join(', ')}` },
         { status: 400 }
       )
     }
     
+    // Validate state transition if currentState is provided
+    if (currentState && typeof currentState === 'string' && validStates.includes(currentState)) {
+      const allowedTransitions = VALID_TRANSITIONS[currentState] || []
+      if (!allowedTransitions.includes(state)) {
+        return NextResponse.json(
+          { error: `Invalid transition from ${currentState} to ${state}. Allowed transitions: ${allowedTransitions.join(', ') || 'none'}` },
+          { status: 400 }
+        )
+      }
+    }
+    
     await writeFile(STATE_FILE, state + '\n', 'utf-8')
     return NextResponse.json({ state })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Failed to write state.txt' },
+      { error: `Failed to write state.txt: ${errorMessage}` },
       { status: 500 }
     )
   }

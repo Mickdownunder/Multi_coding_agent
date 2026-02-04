@@ -20,3 +20,16 @@ out/
 # Logs
 *.log
 npm-debug.log*
+
+# Execution
+control/.execution.lock
+control/.cache/
+control/checkpoints/
+control/.backups/
+control/execution.log
+control/logs/
+control/token-budget.json
+control/progress.json
+control/metrics.json
+control/questions.md
+control/recovery-plan.md

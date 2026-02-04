@@ -1,0 +1,24 @@
+{
+  "llm": {
+    "provider": "gemini",
+    "apiKey": "env:GEMINI_API_KEY",
+    "model": {
+      "plan": "gemini-3-flash-preview",
+      "code": "gemini-3-flash-preview",
+      "chat": "gemini-3-flash-preview"
+    },
+    "maxTokens": {
+      "input": 8000,
+      "output": 4000
+    }
+  },
+  "tokenBudget": {
+    "maxPerProject": 200000,
+    "warningThreshold": 0.8
+  },
+  "execution": {
+    "maxRetries": 3,
+    "timeout": 300000,
+    "checkpointInterval": 1
+  }
+}

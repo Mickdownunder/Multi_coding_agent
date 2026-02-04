@@ -163,6 +163,13 @@ export class FileValidator {
                 const forbiddenPattern = rules.forbiddenPatterns.find(p => p.pattern === forbiddenImport)
                 const message = forbiddenPattern?.message || `Import of '${forbiddenImport}' is forbidden`
                 errors.push(`POLICY VIOLATION: ${message}`)
+                // HARD ENFORCEMENT: Return immediately on first violation
+                // Don't continue checking - violation found means invalid
+                return {
+                  valid: false,
+                  errors,
+                  warnings
+                }
               }
             }
           }
@@ -179,6 +186,12 @@ export class FileValidator {
             
             if (!lineText.includes('// eslint-disable') && !lineText.includes('// @ts-ignore')) {
               errors.push('POLICY VIOLATION: Use of "any" type is forbidden. Use proper TypeScript types.')
+              // HARD ENFORCEMENT: Return immediately on first violation
+              return {
+                valid: false,
+                errors,
+                warnings
+              }
             }
           }
 
@@ -192,6 +205,12 @@ export class FileValidator {
               
               if (!lineText.includes('// eslint-disable') && !lineText.includes('// @ts-ignore')) {
                 errors.push('POLICY VIOLATION: Use of "any" type is forbidden. Use proper TypeScript types.')
+                // HARD ENFORCEMENT: Return immediately on first violation
+                return {
+                  valid: false,
+                  errors,
+                  warnings
+                }
               }
             }
           }
@@ -231,13 +250,28 @@ export class FileValidator {
 
       visit(sourceFile)
     } catch (error) {
-      // If AST parsing fails (syntax errors), fall back to regex validation
-      warnings.push('AST parsing failed, falling back to regex validation')
-      return { valid: true, errors, warnings } // Don't fail on parse errors, let regex handle it
+      // If AST parsing fails (syntax errors), this is a critical error
+      // Don't allow invalid syntax to pass - fail the validation
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      errors.push(`AST parsing failed (syntax error): ${errorMsg}. File contains invalid TypeScript syntax.`)
+      return {
+        valid: false,
+        errors,
+        warnings
+      }
+    }
+
+    // HARD ENFORCEMENT: If any errors found, validation fails immediately
+    if (errors.length > 0) {
+      return {
+        valid: false,
+        errors,
+        warnings
+      }
     }
 
     return {
-      valid: errors.length === 0,
+      valid: true,
       errors,
       warnings
     }

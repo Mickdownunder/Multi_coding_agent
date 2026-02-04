@@ -3,20 +3,48 @@
 @tailwind utilities;
 
 :root {
+  /* Mission Control Center Color Palette */
+  /* Deep Navy/Slate Foundation */
+  --bg-void: #0b0f1a;
   --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-card: #1e293b;
+  --bg-deep: #0f172a;
+  --bg-surface: #1a1f2e;
+  --bg-card: #1a1f2e;
+  --bg-elevated: #252b3a;
   --bg-hover: #334155;
-  --bg-input: #0f172a;
-  --text-primary: #f1f5f9;
-  --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
+  --bg-input: #0b0f1a;
+  
+  /* Borders */
+  --border-subtle: #1e293b;
   --border-color: #334155;
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --error: #ef4444;
+  --border-visible: #334155;
+  --border-accent: #475569;
+  
+  /* Atomic Blue & Cyber Lime Accents */
+  --atomic-blue: #00d4ff;
+  --atomic-blue-glow: rgba(0, 212, 255, 0.3);
+  --atomic-blue-dark: #0099cc;
+  --cyber-lime: #39ff14;
+  --cyber-lime-glow: rgba(57, 255, 20, 0.2);
+  
+  /* Status Colors */
+  --warning-amber: #ffb800;
+  --error-crimson: #ff1744;
+  --success-emerald: #00ff88;
+  
+  /* Legacy Support (for gradual migration) */
+  --bg-secondary: #1e293b;
+  --accent: #00d4ff;
+  --accent-hover: #0099cc;
+  --success: #00ff88;
+  --warning: #ffb800;
+  --error: #ff1744;
+  
+  /* Text Hierarchy */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --text-accent: #00d4ff;
 }
 
 * {
@@ -26,12 +54,44 @@
 }
 
 body {
-  background: var(--bg-primary);
+  background: var(--bg-void);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
   line-height: 1.6;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   GLASMORPHISM MIXINS
+   ============================================ */
+
+.glass-card {
+  background: rgba(26, 31, 46, 0.7);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(51, 65, 85, 0.3);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glass-surface {
+  background: rgba(37, 43, 58, 0.5);
+  backdrop-filter: blur(8px) saturate(150%);
+  -webkit-backdrop-filter: blur(8px) saturate(150%);
+  border: 1px solid rgba(51, 65, 85, 0.2);
+}
+
+.glass-overlay {
+  background: rgba(11, 15, 26, 0.85);
+  backdrop-filter: blur(16px) saturate(200%);
+  -webkit-backdrop-filter: blur(16px) saturate(200%);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  box-shadow: 
+    0 16px 64px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(0, 212, 255, 0.1);
 }
 
 /* ============================================
@@ -366,89 +426,184 @@ body {
    ============================================ */
 
 @layer components {
+  /* Industrial Card with Glasmorphism */
   .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    background: rgba(26, 31, 46, 0.7);
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid rgba(51, 65, 85, 0.3);
+    border-radius: 0; /* Scharfkantig - Industrial Design */
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
   
+  /* Industrial Primary Button */
   .btn-primary {
-    padding: 10px 20px;
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
+    padding: 10px 24px;
+    background: linear-gradient(135deg, var(--atomic-blue) 0%, var(--atomic-blue-dark) 100%);
+    border: 1px solid var(--atomic-blue);
+    border-radius: 0; /* Scharfkantig */
+    color: var(--bg-void);
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
     cursor: pointer;
-    transition: all 0.2s;
+    box-shadow: 
+      0 0 10px var(--atomic-blue-glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   .btn-primary:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    box-shadow: 
+      0 0 20px var(--atomic-blue-glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+    border-color: var(--atomic-blue);
   }
 
   .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    transform: none;
   }
 
+  /* Industrial Secondary Button */
   .btn-secondary {
-    padding: 10px 20px;
-    background: var(--bg-secondary);
+    padding: 10px 24px;
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border: 1px solid var(--border-visible);
+    border-radius: 0; /* Scharfkantig */
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
     cursor: pointer;
-    transition: all 0.2s;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   .btn-secondary:hover {
-    background: var(--bg-hover);
-    border-color: var(--accent);
+    background: rgba(0, 212, 255, 0.1);
+    border-color: var(--atomic-blue);
+    box-shadow: 
+      inset 0 0 10px rgba(0, 0, 0, 0.3),
+      0 0 10px var(--atomic-blue-glow);
   }
 
+  /* Industrial Danger Button */
+  .btn-danger {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, var(--error-crimson) 0%, #cc0022 100%);
+    border: 1px solid var(--error-crimson);
+    border-radius: 0;
+    color: var(--text-primary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    box-shadow: 
+      0 0 10px rgba(255, 23, 68, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    box-shadow: 
+      0 0 20px rgba(255, 23, 68, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+  }
+
+  /* Industrial Input */
+  .input-industrial {
+    background: var(--bg-void);
+    border: 1px solid var(--border-visible);
+    border-radius: 0;
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .input-industrial:focus {
+    border-color: var(--atomic-blue);
+    box-shadow: 
+      inset 0 2px 4px rgba(0, 0, 0, 0.3),
+      0 0 10px var(--atomic-blue-glow);
+    outline: none;
+  }
+
+  .input-industrial::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+  }
+
+  /* Industrial State Badge */
   .status-badge {
     display: inline-flex;
     align-items: center;
-    padding: 6px 14px;
-    border-radius: 20px;
-    font-size: 12px;
+    padding: 4px 12px;
+    border: 1px solid;
+    border-radius: 0; /* Scharfkantig */
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1.5px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+  }
+
+  .status-badge.active {
+    box-shadow: 
+      inset 0 0 10px rgba(0, 0, 0, 0.3),
+      0 0 15px var(--atomic-blue-glow);
+    animation: statePulse 2s ease-in-out infinite;
   }
 
   .status-plan { 
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    background: rgba(0, 212, 255, 0.15);
+    color: var(--atomic-blue);
+    border: 1px solid var(--atomic-blue);
+    box-shadow: 0 0 10px var(--atomic-blue-glow);
   }
   
   .status-implement { 
-    background: rgba(245, 158, 11, 0.15);
-    color: #fbbf24;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: rgba(255, 184, 0, 0.15);
+    color: var(--warning-amber);
+    border: 1px solid var(--warning-amber);
+    box-shadow: 0 0 10px rgba(255, 184, 0, 0.3);
   }
   
   .status-verify { 
-    background: rgba(168, 85, 247, 0.15);
-    color: #a78bfa;
-    border: 1px solid rgba(168, 85, 247, 0.3);
+    background: rgba(57, 255, 20, 0.15);
+    color: var(--cyber-lime);
+    border: 1px solid var(--cyber-lime);
+    box-shadow: 0 0 10px var(--cyber-lime-glow);
   }
   
   .status-done { 
-    background: rgba(16, 185, 129, 0.15);
-    color: #34d399;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background: rgba(0, 255, 136, 0.15);
+    color: var(--success-emerald);
+    border: 1px solid var(--success-emerald);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
   }
   
   .status-fail { 
-    background: rgba(239, 68, 68, 0.15);
-    color: #f87171;
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: rgba(255, 23, 68, 0.15);
+    color: var(--error-crimson);
+    border: 1px solid var(--error-crimson);
+    box-shadow: 0 0 10px rgba(255, 23, 68, 0.3);
   }
 
   .status-unknown {
@@ -578,6 +733,51 @@ body {
    ANIMATIONS
    ============================================ */
 
+/* ============================================
+   STATE TRANSITION ANIMATIONS
+   ============================================ */
+
+@keyframes stateTransition {
+  0% { 
+    transform: scale(1); 
+    opacity: 1; 
+    box-shadow: 0 0 5px var(--atomic-blue-glow);
+  }
+  25% { 
+    transform: scale(1.1); 
+    opacity: 0.8; 
+    box-shadow: 0 0 20px var(--atomic-blue-glow);
+  }
+  50% { 
+    transform: scale(1.05); 
+    opacity: 1; 
+    box-shadow: 0 0 30px var(--atomic-blue-glow);
+  }
+  75% { 
+    transform: scale(1.02); 
+    opacity: 1; 
+    box-shadow: 0 0 15px var(--atomic-blue-glow);
+  }
+  100% { 
+    transform: scale(1); 
+    opacity: 1; 
+    box-shadow: 0 0 5px var(--atomic-blue-glow);
+  }
+}
+
+@keyframes statePulse {
+  0%, 100% { 
+    box-shadow: 
+      inset 0 0 10px rgba(0, 0, 0, 0.3),
+      0 0 15px var(--atomic-blue-glow);
+  }
+  50% { 
+    box-shadow: 
+      inset 0 0 10px rgba(0, 0, 0, 0.3),
+      0 0 25px var(--atomic-blue-glow);
+  }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -587,6 +787,10 @@ body {
   animation: pulse 2s ease-in-out infinite;
 }
 
+.animate-state-transition {
+  animation: stateTransition 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -594,6 +798,63 @@ body {
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+/* Terminal Cursor Blink */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  background: var(--cyber-lime);
+  animation: blink 1s step-end infinite;
+  margin-left: 2px;
+  vertical-align: middle;
+  box-shadow: 0 0 8px var(--cyber-lime);
+}
+
+/* ============================================
+   COMMAND BAR (CMDK) STYLES
+   ============================================ */
+
+[cmdk-root] {
+  color: var(--text-primary);
+}
+
+[cmdk-input] {
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+[cmdk-item] {
+  border-radius: 0;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+[cmdk-item][data-selected="true"] {
+  background: rgba(0, 212, 255, 0.15);
+  border-left: 2px solid var(--atomic-blue);
+  box-shadow: inset 0 0 10px rgba(0, 212, 255, 0.1);
+}
+
+[cmdk-item]:hover {
+  background: rgba(51, 65, 85, 0.3);
+}
+
+[cmdk-group-heading] {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  padding: 8px 16px;
 }
 
 /* ============================================

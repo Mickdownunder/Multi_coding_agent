@@ -218,7 +218,7 @@ export class LLMService {
           body: JSON.stringify({
             model,
             messages: [
-              { role: 'system', content: 'You are a helpful coding assistant. Always respond with valid JSON.' },
+              { role: 'system', content: 'STRICT JSON ONLY. You are a coding assistant. Respond with ONLY valid JSON. No conversational text, no explanations, no markdown formatting outside the JSON structure. Your response must be parseable JSON.parse() without any preprocessing.' },
               { role: 'user', content: prompt }
             ],
             max_tokens: maxOutputTokens,
@@ -277,10 +277,10 @@ export class LLMService {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
+            body: JSON.stringify({
             contents: [{
               parts: [{
-                text: `You are a helpful coding assistant. Always respond with valid JSON.\n\n${prompt}`
+                text: `STRICT JSON ONLY. You are a coding assistant. Respond with ONLY valid JSON. No conversational text, no explanations, no markdown formatting outside the JSON structure. Your response must be parseable JSON.parse() without any preprocessing.\n\n${prompt}`
               }]
             }],
             generationConfig: {
@@ -377,7 +377,7 @@ Generate a plan with the following JSON structure:
   ]
 }
 
-Respond ONLY with valid JSON, no additional text.`
+STRICT JSON ONLY. Respond with ONLY valid JSON. No conversational text, no explanations, no markdown formatting outside the JSON structure. Your response must be parseable by JSON.parse() without any preprocessing.`
   }
 
   private buildCodePrompt(request: {
@@ -416,7 +416,7 @@ Generate code with the following JSON structure:
   "dependencies": ["dependency1", "dependency2"]
 }
 
-Respond ONLY with valid JSON, no additional text.`
+STRICT JSON ONLY. Respond with ONLY valid JSON. No conversational text, no explanations, no markdown formatting outside the JSON structure. Your response must be parseable by JSON.parse() without any preprocessing.`
   }
 
   private buildChatPrompt(message: string, history: Array<{ role: string; content: string }>): string {
@@ -436,7 +436,7 @@ Respond with JSON:
   "questions": ["question1", "question2"]
 }
 
-Respond ONLY with valid JSON, no additional text.`
+STRICT JSON ONLY. Respond with ONLY valid JSON. No conversational text, no explanations, no markdown formatting outside the JSON structure. Your response must be parseable by JSON.parse() without any preprocessing.`
   }
 
   private determineComplexity(step: { description: string; type: string }): 'simple' | 'medium' | 'complex' {
@@ -455,48 +455,130 @@ Respond ONLY with valid JSON, no additional text.`
 
   /**
    * Extract and parse JSON from LLM response
-   * Handles cases where JSON is wrapped in markdown code blocks or incomplete
+   * Handles cases where JSON is wrapped in markdown code blocks or has text before/after
+   * ROBUST: Finds JSON even if model adds conversational text
    */
   private extractAndParseJSON(content: string): any {
+    if (!content || typeof content !== 'string') {
+      throw new Error('Invalid content: content must be a non-empty string')
+    }
+
     // Remove markdown code blocks if present
     let jsonContent = content.trim()
     
-    // Extract JSON from markdown code blocks
-    const jsonBlockMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+    // Extract JSON from markdown code blocks (handles ```json or ```)
+    const jsonBlockMatch = jsonContent.match(/```(?:json|typescript|javascript)?\s*([\s\S]*?)\s*```/)
     if (jsonBlockMatch) {
       jsonContent = jsonBlockMatch[1].trim()
     }
     
-    // Try to find JSON object boundaries
-    const firstBrace = jsonContent.indexOf('{')
-    const lastBrace = jsonContent.lastIndexOf('}')
+    // Remove any leading conversational text (common pattern: "Here's the JSON:" or similar)
+    // Look for the first { or [ which indicates start of JSON
+    const firstJsonChar = Math.min(
+      jsonContent.indexOf('{') !== -1 ? jsonContent.indexOf('{') : Infinity,
+      jsonContent.indexOf('[') !== -1 ? jsonContent.indexOf('[') : Infinity
+    )
     
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      jsonContent = jsonContent.substring(firstBrace, lastBrace + 1)
+    if (firstJsonChar !== Infinity && firstJsonChar > 0) {
+      jsonContent = jsonContent.substring(firstJsonChar)
     }
     
-    // Try to fix incomplete JSON (common issue with truncated responses)
-    // If JSON is incomplete, try to close it
-    if (jsonContent.match(/\{[^}]*$/)) {
-      // Incomplete object - try to close it
-      const openBraces = (jsonContent.match(/\{/g) || []).length
-      const closeBraces = (jsonContent.match(/\}/g) || []).length
-      const missingBraces = openBraces - closeBraces
+    // Find JSON object/array boundaries (handles nested structures)
+    let jsonStart = -1
+    let jsonEnd = -1
+    let braceCount = 0
+    let bracketCount = 0
+    let inString = false
+    let escapeNext = false
+    
+    for (let i = 0; i < jsonContent.length; i++) {
+      const char = jsonContent[i]
       
-      if (missingBraces > 0) {
-        // Try to close incomplete strings and objects
-        if (jsonContent.match(/"[^"]*$/)) {
-          jsonContent += '"'
+      if (escapeNext) {
+        escapeNext = false
+        continue
+      }
+      
+      if (char === '\\') {
+        escapeNext = true
+        continue
+      }
+      
+      if (char === '"') {
+        inString = !inString
+        continue
+      }
+      
+      if (inString) {
+        continue
+      }
+      
+      if (char === '{' || char === '[') {
+        if (jsonStart === -1) {
+          jsonStart = i
         }
-        jsonContent += '}'.repeat(missingBraces)
+        if (char === '{') {
+          braceCount++
+        } else {
+          bracketCount++
+        }
+      } else if (char === '}' || char === ']') {
+        if (char === '}') {
+          braceCount--
+        } else {
+          bracketCount--
+        }
+        
+        // When all braces/brackets are closed, we found the end
+        if (braceCount === 0 && bracketCount === 0 && jsonStart !== -1) {
+          jsonEnd = i + 1
+          break
+        }
       }
     }
     
+    // Extract the JSON portion
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+      jsonContent = jsonContent.substring(jsonStart, jsonEnd)
+    } else if (jsonStart !== -1) {
+      // Incomplete JSON - try to close it intelligently
+      const openBraces = (jsonContent.substring(jsonStart).match(/\{/g) || []).length
+      const closeBraces = (jsonContent.substring(jsonStart).match(/\}/g) || []).length
+      const missingBraces = openBraces - closeBraces
+      
+      // Check for incomplete strings
+      const lastQuote = jsonContent.lastIndexOf('"')
+      const lastOpenBrace = jsonContent.lastIndexOf('{')
+      if (lastQuote > lastOpenBrace && !jsonContent.substring(lastQuote).match(/":\s*$/)) {
+        // String is incomplete
+        jsonContent = jsonContent.substring(jsonStart) + '"'
+      }
+      
+      // Close incomplete objects/arrays
+      if (missingBraces > 0) {
+        jsonContent = jsonContent.substring(jsonStart) + '}'.repeat(missingBraces)
+      } else if (missingBraces < 0) {
+        // Too many closing braces - this is likely corrupted
+        throw new Error(`JSON structure appears corrupted: ${Math.abs(missingBraces)} too many closing braces`)
+      }
+    } else {
+      // No JSON structure found at all
+      throw new Error(`No valid JSON structure found in response. Content starts with: ${content.substring(0, 100)}...`)
+    }
+    
+    // Final parse attempt
     try {
-      return JSON.parse(jsonContent)
+      const parsed = JSON.parse(jsonContent)
+      // Verify it's actually an object or array (not null, string, number, etc.)
+      if (parsed === null || (typeof parsed !== 'object' && !Array.isArray(parsed))) {
+        throw new Error('Parsed JSON is not an object or array')
+      }
+      return parsed
     } catch (error) {
-      // If still fails, try to extract just the essential parts
-      throw new Error(`Failed to parse JSON: ${error instanceof Error ? error.message : 'Unknown error'}. Content preview: ${jsonContent.substring(0, 200)}...`)
+      // Provide detailed error with context
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      const preview = jsonContent.length > 500 ? jsonContent.substring(0, 500) + '...' : jsonContent
+      throw new Error(`Failed to parse JSON: ${errorMsg}. Extracted JSON preview: ${preview}`)
     }
   }
 }

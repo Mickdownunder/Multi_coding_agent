@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { FolderOpen, GitBranch, Upload, Plus } from 'lucide-react'
 
 function GitRemoteManager() {
   const [remotes, setRemotes] = useState<Array<{ name: string; url: string }>>([])
@@ -91,7 +92,7 @@ function GitRemoteManager() {
   }
 
   if (loading) {
-    return <div style={{ fontSize: '11px', color: '#888' }}>Lade Remotes...</div>
+    return <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>$ Loading remotes...</div>
   }
 
   const handleCreateRepo = async () => {
@@ -113,13 +114,12 @@ function GitRemoteManager() {
       })
       const data = await res.json()
       if (res.ok) {
-        alert(`✅ GitHub Repo '${repoName}' erstellt!\n\nURL: ${data.repository.url}\n\nJetzt kannst du pushen!`)
-        setGithubToken('') // Clear token for security
+        alert(`✅ GitHub Repo '${repoName}' erstellt!\n\nURL: ${data.repository?.url || data.repoUrl}\n\nJetzt kannst du pushen!`)
+        setGithubToken('')
         setShowCreateRepo(false)
         fetchRemotes()
-        // Auto-set remote URL
-        if (data.remote) {
-          setRemoteUrl(data.remote.url)
+        if (data.repoUrl) {
+          setRemoteUrl(data.repoUrl)
         }
       } else {
         alert(`Fehler: ${data.error}\n\n${data.details || ''}`)
@@ -133,143 +133,96 @@ function GitRemoteManager() {
 
   return (
     <div style={{ marginTop: '12px', fontSize: '11px' }}>
-      <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#5c9aff' }}>📤 Remote & Push:</div>
+      <div style={{ marginBottom: '8px', fontWeight: 600, color: 'var(--atomic-blue)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '10px' }}>
+        Remote & Push
+      </div>
       
       {!showCreateRepo && remotes.length === 0 && (
         <button
           onClick={() => setShowCreateRepo(true)}
-          style={{
-            width: '100%',
-            padding: '6px 12px',
-            background: '#7ec87e',
-            color: '#1a1a1a',
-            border: 'none',
-            borderRadius: '4px',
-            fontSize: '10px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            marginBottom: '8px'
-          }}
+          className="btn-primary"
+          style={{ width: '100%', marginBottom: '8px', fontSize: '11px', padding: '8px 12px' }}
         >
-          🚀 GitHub Repo erstellen
+          <Plus size={12} style={{ marginRight: '6px', display: 'inline' }} />
+          GitHub Repo erstellen
         </button>
       )}
 
       {showCreateRepo && (
-        <div style={{ 
-          background: '#2a2a2a', 
-          padding: '12px', 
-          borderRadius: '4px', 
-          marginBottom: '8px' 
+        <div className="glass-surface" style={{ 
+          padding: '16px', 
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 0,
+          marginBottom: '12px' 
         }}>
-          <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#5c9aff' }}>
-            GitHub Repo erstellen:
+          <div style={{ marginBottom: '12px', fontWeight: 600, color: 'var(--atomic-blue)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '11px' }}>
+            GitHub Repo erstellen
           </div>
           <input
             type="text"
-            placeholder="Repository Name (z.B. control-system)"
+            placeholder="Repository Name"
             value={repoName}
             onChange={(e) => setRepoName(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '4px 8px',
-              background: '#1a1a1a',
-              color: '#e0e0e0',
-              border: '1px solid #444',
-              borderRadius: '4px',
-              fontSize: '10px',
-              marginBottom: '6px'
-            }}
+            className="input-industrial"
+            style={{ width: '100%', marginBottom: '8px', fontSize: '11px' }}
           />
           <input
             type="text"
             placeholder="Beschreibung (optional)"
             value={repoDescription}
             onChange={(e) => setRepoDescription(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '4px 8px',
-              background: '#1a1a1a',
-              color: '#e0e0e0',
-              border: '1px solid #444',
-              borderRadius: '4px',
-              fontSize: '10px',
-              marginBottom: '6px'
-            }}
+            className="input-industrial"
+            style={{ width: '100%', marginBottom: '8px', fontSize: '11px' }}
           />
           <input
             type="password"
-            placeholder="GitHub Personal Access Token (mit 'repo' scope)"
+            placeholder="GitHub Personal Access Token"
             value={githubToken}
             onChange={(e) => setGithubToken(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '4px 8px',
-              background: '#1a1a1a',
-              color: '#e0e0e0',
-              border: '1px solid #444',
-              borderRadius: '4px',
-              fontSize: '10px',
-              marginBottom: '6px'
-            }}
+            className="input-industrial"
+            style={{ width: '100%', marginBottom: '8px', fontSize: '11px' }}
           />
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px', fontSize: '10px', color: '#aaa' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', fontSize: '11px', color: 'var(--text-muted)' }}>
             <input
               type="checkbox"
               checked={isPrivate}
               onChange={(e) => setIsPrivate(e.target.checked)}
+              style={{ accentColor: 'var(--atomic-blue)' }}
             />
             Privates Repository
           </label>
-          <div style={{ display: 'flex', gap: '4px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={handleCreateRepo}
               disabled={creating || !repoName || !githubToken}
-              style={{
-                flex: 1,
-                padding: '6px 12px',
-                background: (creating || !repoName || !githubToken) ? '#444' : '#7ec87e',
-                color: '#1a1a1a',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '10px',
-                fontWeight: 'bold',
-                cursor: (creating || !repoName || !githubToken) ? 'not-allowed' : 'pointer',
-                opacity: (creating || !repoName || !githubToken) ? 0.6 : 1
-              }}
+              className="btn-primary"
+              style={{ flex: 1, fontSize: '11px', padding: '8px 12px' }}
             >
-              {creating ? 'Erstelle...' : '✅ Repo erstellen'}
+              {creating ? 'Creating...' : 'Create Repo'}
             </button>
             <button
               onClick={() => {
                 setShowCreateRepo(false)
                 setGithubToken('')
               }}
-              style={{
-                padding: '6px 12px',
-                background: '#444',
-                color: '#e0e0e0',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '10px',
-                cursor: 'pointer'
-              }}
+              className="btn-secondary"
+              style={{ fontSize: '11px', padding: '8px 12px' }}
             >
-              Abbrechen
+              Cancel
             </button>
           </div>
-          <div style={{ fontSize: '9px', color: '#888', marginTop: '6px' }}>
-            💡 Token erstellen: <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" style={{ color: '#5c9aff' }}>github.com/settings/tokens</a> (Scope: "repo")
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', fontFamily: 'monospace' }}>
+            Token: <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--atomic-blue)' }}>github.com/settings/tokens</a>
           </div>
         </div>
       )}
       
       {remotes.length > 0 && (
-        <div style={{ marginBottom: '8px', color: '#aaa' }}>
-          <strong>Remotes:</strong>
+        <div style={{ marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+          <strong style={{ color: 'var(--text-primary)' }}>Remotes:</strong>
           {remotes.map(r => (
-            <div key={r.name} style={{ fontSize: '10px', marginTop: '4px' }}>
-              {r.name}: <code style={{ color: '#5c9aff' }}>{r.url}</code>
+            <div key={r.name} style={{ fontSize: '10px', marginTop: '4px', fontFamily: 'monospace', color: 'var(--atomic-blue)' }}>
+              {r.name}: <code>{r.url}</code>
             </div>
           ))}
         </div>
@@ -278,88 +231,47 @@ function GitRemoteManager() {
       <div style={{ marginTop: '8px' }}>
         <input
           type="text"
-          placeholder="GitHub/GitLab URL (z.B. https://github.com/user/repo.git)"
+          placeholder="GitHub/GitLab URL"
           value={remoteUrl}
           onChange={(e) => setRemoteUrl(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '4px 8px',
-            background: '#2a2a2a',
-            color: '#e0e0e0',
-            border: '1px solid #444',
-            borderRadius: '4px',
-            fontSize: '10px',
-            marginBottom: '6px'
-          }}
+          className="input-industrial"
+          style={{ width: '100%', marginBottom: '8px', fontSize: '11px' }}
         />
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
           <input
             type="text"
             placeholder="Remote Name"
             value={remoteName}
             onChange={(e) => setRemoteName(e.target.value)}
-            style={{
-              flex: 1,
-              padding: '4px 8px',
-              background: '#2a2a2a',
-              color: '#e0e0e0',
-              border: '1px solid #444',
-              borderRadius: '4px',
-              fontSize: '10px'
-            }}
+            className="input-industrial"
+            style={{ flex: 1, fontSize: '11px' }}
           />
           <input
             type="text"
             placeholder="Branch"
             value={branch}
             onChange={(e) => setBranch(e.target.value)}
-            style={{
-              flex: 1,
-              padding: '4px 8px',
-              background: '#2a2a2a',
-              color: '#e0e0e0',
-              border: '1px solid #444',
-              borderRadius: '4px',
-              fontSize: '10px'
-            }}
+            className="input-industrial"
+            style={{ flex: 1, fontSize: '11px' }}
           />
         </div>
-        <div style={{ display: 'flex', gap: '4px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button
             onClick={handleAddRemote}
             disabled={!remoteUrl}
-            style={{
-              flex: 1,
-              padding: '6px 12px',
-              background: remoteUrl ? '#5c9aff' : '#444',
-              color: '#1a1a1a',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '10px',
-              fontWeight: 'bold',
-              cursor: remoteUrl ? 'pointer' : 'not-allowed',
-              opacity: remoteUrl ? 1 : 0.6
-            }}
+            className="btn-secondary"
+            style={{ flex: 1, fontSize: '11px', padding: '8px 12px' }}
           >
-            Remote hinzufügen
+            Add Remote
           </button>
           <button
             onClick={handlePush}
             disabled={pushing || remotes.length === 0}
-            style={{
-              flex: 1,
-              padding: '6px 12px',
-              background: (pushing || remotes.length === 0) ? '#444' : '#7ec87e',
-              color: '#1a1a1a',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '10px',
-              fontWeight: 'bold',
-              cursor: (pushing || remotes.length === 0) ? 'not-allowed' : 'pointer',
-              opacity: (pushing || remotes.length === 0) ? 0.6 : 1
-            }}
+            className="btn-primary"
+            style={{ flex: 1, fontSize: '11px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
           >
-            {pushing ? 'Pushe...' : 'Push'}
+            <Upload size={12} />
+            {pushing ? 'Pushing...' : 'Push'}
           </button>
         </div>
       </div>
@@ -390,7 +302,6 @@ export default function FileLocationInfo() {
           setProjectPath(data.path)
         }
       } catch {
-        // Fallback: use window location
         setProjectPath(window.location.origin.replace('http://localhost:', '').replace('http://', ''))
       }
     }
@@ -401,7 +312,6 @@ export default function FileLocationInfo() {
   useEffect(() => {
     fetchData()
     
-    // Listen for global refresh event
     const handleRefresh = () => {
       fetchData()
     }
@@ -432,74 +342,86 @@ export default function FileLocationInfo() {
   }
 
   return (
-    <div style={{
-      background: '#252525',
-      border: '1px solid #333',
-      padding: '16px',
-      borderRadius: '4px',
-      marginBottom: '24px',
-      fontSize: '12px'
-    }}>
-      <h3 style={{ marginBottom: '12px', color: '#5c9aff' }}>📍 Wo werden Dateien erstellt?</h3>
-      <div style={{ color: '#e0e0e0', lineHeight: '1.6' }}>
-        <p style={{ marginBottom: '8px' }}>
-          <strong>Alle Dateien werden direkt in deinem Projektverzeichnis erstellt:</strong>
+    <div className="card glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
+      <h3 style={{ 
+        marginBottom: '16px', 
+        color: 'var(--text-primary)',
+        fontSize: '18px',
+        fontWeight: 600,
+        textTransform: 'uppercase',
+        letterSpacing: '1px',
+        fontFamily: 'Inter, sans-serif',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      }}>
+        <FolderOpen size={18} style={{ color: 'var(--atomic-blue)' }} />
+        File Location
+      </h3>
+      <div style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+        <p style={{ marginBottom: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>
+          Alle Dateien werden direkt in deinem Projektverzeichnis erstellt:
         </p>
-        <div style={{ 
-          background: '#1a1a1a', 
+        <div className="glass-surface" style={{ 
           padding: '12px', 
-          borderRadius: '4px', 
-          fontFamily: 'monospace',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 0,
+          fontFamily: 'JetBrains Mono, monospace',
           fontSize: '11px',
-          marginBottom: '12px',
-          color: '#5c9aff',
+          marginBottom: '16px',
+          color: 'var(--atomic-blue)',
           wordBreak: 'break-all'
         }}>
-          {projectPath || 'Lade Projektpfad...'}
+          {projectPath || '$ Loading project path...'}
         </div>
-        <div style={{ 
-          background: '#2a2a2a', 
-          padding: '12px', 
-          borderRadius: '4px', 
-          marginBottom: '12px',
+        <div className="glass-surface" style={{ 
+          padding: '16px', 
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 0,
+          marginBottom: '16px',
           fontSize: '11px',
-          color: '#aaa'
+          color: 'var(--text-secondary)'
         }}>
-          <strong style={{ color: '#5c9aff' }}>📁 So findest du den Documents-Ordner:</strong>
-          <ol style={{ marginLeft: '20px', marginTop: '8px', lineHeight: '1.8' }}>
+          <strong style={{ color: 'var(--atomic-blue)', display: 'block', marginBottom: '8px' }}>
+            So findest du den Documents-Ordner:
+          </strong>
+          <ol style={{ marginLeft: '20px', marginTop: '8px', lineHeight: '1.8', color: 'var(--text-secondary)' }}>
             <li><strong>Finder öffnen</strong> (Cmd+Space, dann "Finder")</li>
             <li>In der <strong>Seitenleiste</strong> auf <strong>"Dokumente"</strong> klicken</li>
             <li>Oder: <strong>Cmd+Shift+O</strong> drücken → öffnet direkt "Dokumente"</li>
-            <li>Dort findest du den Ordner <code style={{ color: '#5c9aff' }}>control-system</code></li>
+            <li>Dort findest du den Ordner <code style={{ color: 'var(--atomic-blue)', fontFamily: 'monospace' }}>control-system</code></li>
           </ol>
-          <p style={{ marginTop: '8px', color: '#7ec87e' }}>
-            💡 <strong>Tipp:</strong> Du kannst den Pfad oben kopieren und im Finder einfügen (Cmd+Shift+G)
+          <p style={{ marginTop: '12px', color: 'var(--success-emerald)', fontFamily: 'monospace', fontSize: '10px' }}>
+            $ Tipp: Pfad kopieren und im Finder einfügen (Cmd+Shift+G)
           </p>
         </div>
-        <p style={{ marginBottom: '8px' }}>
-          <strong>Beispiele:</strong>
+        <p style={{ marginBottom: '8px', color: 'var(--text-primary)', fontWeight: 600 }}>
+          Beispiele:
         </p>
-        <ul style={{ marginLeft: '20px', marginBottom: '12px', color: '#aaa' }}>
-          <li><code style={{ color: '#5c9aff' }}>app/components/todo/TodoItem.tsx</code></li>
-          <li><code style={{ color: '#5c9aff' }}>app/api/todos/route.ts</code></li>
-          <li><code style={{ color: '#5c9aff' }}>lib/todo-store.ts</code></li>
-          <li><code style={{ color: '#5c9aff' }}>types/todo.ts</code></li>
+        <ul style={{ marginLeft: '20px', marginBottom: '16px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11px' }}>
+          <li><code style={{ color: 'var(--atomic-blue)' }}>app/components/todo/TodoItem.tsx</code></li>
+          <li><code style={{ color: 'var(--atomic-blue)' }}>app/api/todos/route.ts</code></li>
+          <li><code style={{ color: 'var(--atomic-blue)' }}>lib/todo-store.ts</code></li>
+          <li><code style={{ color: 'var(--atomic-blue)' }}>types/todo.ts</code></li>
         </ul>
         
-        <div style={{ 
-          background: '#1a1a1a', 
-          padding: '12px', 
-          borderRadius: '4px', 
-          marginTop: '12px',
-          marginBottom: '12px'
+        <div className="glass-surface" style={{ 
+          padding: '16px', 
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 0,
+          marginTop: '16px',
+          marginBottom: '16px'
         }}>
-          <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>🔧 Git Integration:</div>
+          <div style={{ marginBottom: '12px', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '1px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <GitBranch size={14} style={{ color: 'var(--cyber-lime)' }} />
+            Git Integration
+          </div>
           {gitStatus?.initialized ? (
             <div>
-              <div style={{ color: '#7ec87e', marginBottom: '8px' }}>
-                ✅ Git Repository initialisiert
+              <div style={{ color: 'var(--success-emerald)', marginBottom: '12px', fontFamily: 'monospace', fontSize: '11px' }}>
+                $ Git Repository initialisiert
                 {gitStatus.path && (
-                  <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
                     {gitStatus.path}
                   </div>
                 )}
@@ -508,33 +430,25 @@ export default function FileLocationInfo() {
             </div>
           ) : (
             <div>
-              <div style={{ color: '#ffa500', marginBottom: '8px' }}>
-                ⚠️ Git Repository nicht initialisiert
+              <div style={{ color: 'var(--warning-amber)', marginBottom: '12px', fontFamily: 'monospace', fontSize: '11px' }}>
+                $ Git Repository nicht initialisiert
               </div>
               <button
                 onClick={handleInitGit}
-                style={{
-                  padding: '6px 12px',
-                  background: '#5c9aff',
-                  color: '#1a1a1a',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
+                className="btn-primary"
+                style={{ fontSize: '11px', padding: '8px 16px' }}
               >
-                Git Repository initialisieren
+                Initialize Git
               </button>
             </div>
           )}
         </div>
 
-        <p style={{ color: '#7ec87e', marginTop: '12px' }}>
-          ✅ <strong>Die Dateien sind sofort in deinem Editor/IDE sichtbar!</strong>
+        <p style={{ color: 'var(--success-emerald)', marginTop: '16px', fontFamily: 'monospace', fontSize: '11px' }}>
+          $ Dateien sind sofort im Editor/IDE sichtbar!
         </p>
-        <p style={{ color: '#ffa500', marginTop: '8px' }}>
-          💡 <strong>Tipp:</strong> Öffne das Projektverzeichnis in deinem Editor, um die Dateien live zu sehen.
+        <p style={{ color: 'var(--warning-amber)', marginTop: '8px', fontFamily: 'monospace', fontSize: '11px' }}>
+          $ Tipp: Öffne das Projektverzeichnis in deinem Editor
         </p>
       </div>
     </div>

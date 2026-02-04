@@ -9,18 +9,40 @@ export async function GET() {
   try {
     // Check if Git is initialized
     try {
-      const { stdout } = await execAsync('git rev-parse --git-dir')
-      const gitDir = stdout.trim()
+      const { stdout: gitDirOut } = await execAsync('git rev-parse --git-dir')
+      const gitDir = gitDirOut.trim()
       const absPath = join(process.cwd(), gitDir === '.git' ? '.git' : gitDir)
+      
+      // Get current branch
+      let branch = 'main'
+      try {
+        const { stdout: branchOut } = await execAsync('git rev-parse --abbrev-ref HEAD')
+        branch = branchOut.trim()
+      } catch {
+        // Branch detection failed, use default
+      }
+      
+      // Get latest commit hash
+      let hash = ''
+      try {
+        const { stdout: hashOut } = await execAsync('git rev-parse HEAD')
+        hash = hashOut.trim()
+      } catch {
+        // No commits yet
+      }
       
       return NextResponse.json({
         initialized: true,
-        path: absPath.replace(process.cwd() + '/', '')
+        path: absPath.replace(process.cwd() + '/', ''),
+        branch: branch || 'main',
+        hash: hash || 'N/A'
       })
     } catch {
       return NextResponse.json({
         initialized: false,
-        path: ''
+        path: '',
+        branch: 'main',
+        hash: 'N/A'
       })
     }
   } catch (error) {

@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Zap, DollarSign, TrendingUp } from 'lucide-react'
 
 interface BudgetData {
   totalCost: number
   tokensUsed: number
   tokensRemaining: number
-  maxPerProject?: number // Original budget limit
+  maxPerProject?: number
   costBreakdown: {
     plan: number
     code: number
@@ -26,17 +27,15 @@ export default function TokenBudgetTracker() {
       setRefreshing(true)
     }
     try {
-      // Add cache-busting timestamp to force refresh
       const url = `/api/execute/budget?t=${Date.now()}${force ? '&force=1' : ''}`
       const res = await fetch(url, {
-        cache: 'no-store', // Force no cache
+        cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache'
         }
       })
       const data = await res.json()
       if (res.ok) {
-        // API now returns the correct format, use it directly
         const budgetData = {
           totalCost: data.totalCost || 0,
           tokensUsed: data.tokensUsed || 0,
@@ -66,28 +65,23 @@ export default function TokenBudgetTracker() {
   useEffect(() => {
     fetchBudget()
     
-    // Listen for global refresh event
     const handleRefresh = () => {
-      fetchBudget(true, true) // Force refresh with loading state
+      fetchBudget(true, true)
     }
     window.addEventListener('dashboard-refresh', handleRefresh)
     
-    // Check if execution is running before polling
     const checkAndPoll = async () => {
       try {
         const statusRes = await fetch('/api/execute/status')
         const statusData = await statusRes.json()
-        // Only poll if execution is actually running (IMPLEMENT or VERIFY)
-        // Don't poll if PLAN, DONE, or FAIL
         if (statusData.running && statusData.state !== 'PLAN' && statusData.state !== 'DONE' && statusData.state !== 'FAIL') {
           fetchBudget(false)
         }
       } catch (error) {
-        // If status check fails, don't poll (avoid unnecessary requests)
+        // Ignore errors
       }
     }
     
-    // Poll every 15 seconds (reduced frequency), but only if execution is running
     const interval = setInterval(checkAndPoll, 15000)
     return () => {
       clearInterval(interval)
@@ -96,42 +90,61 @@ export default function TokenBudgetTracker() {
   }, [])
 
   if (loading) {
-    return <div className="loading">Loading budget...</div>
+    return (
+      <div className="card glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
+        <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '12px' }}>
+          $ Loading budget...
+        </div>
+      </div>
+    )
   }
 
   if (!budget) {
-    return <div className="error">Failed to load budget</div>
+    return (
+      <div className="card glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
+        <div style={{ color: 'var(--error-crimson)', fontFamily: 'monospace', fontSize: '12px' }}>
+          $ Failed to load budget
+        </div>
+      </div>
+    )
   }
 
-  // Calculate usage percentage correctly
   const isExceeded = budget.tokensRemaining < 0
-  
-  // Use maxPerProject from API if available, otherwise calculate from tokensUsed + tokensRemaining
   const originalBudgetLimit = budget.maxPerProject || (budget.tokensUsed + Math.max(0, budget.tokensRemaining))
-  
   const usagePercent = originalBudgetLimit > 0
     ? ((budget.tokensUsed / originalBudgetLimit) * 100).toFixed(1)
     : '100'
 
   return (
-    <div className="token-budget-tracker">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2>Token Budget</h2>
+    <div className="card glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 style={{ 
+          color: 'var(--text-primary)', 
+          fontSize: '18px', 
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+          fontFamily: 'Inter, sans-serif',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <Zap size={18} style={{ color: 'var(--warning-amber)' }} />
+          Token Budget
+        </h2>
         <button
           onClick={async () => {
-            if (!confirm('Token Budget wirklich zurücksetzen? Alle Token-Zähler werden auf 0 gesetzt.')) {
+            if (!confirm('Token Budget wirklich zurücksetzen?')) {
               return
             }
             setRefreshing(true)
             try {
-              // Reset budget
               const res = await fetch('/api/execute/budget/reset', { 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
               })
               const data = await res.json()
               if (res.ok) {
-                // Update budget directly from response if available
                 if (data.budget) {
                   setBudget({
                     totalCost: data.budget.totalCost || 0,
@@ -142,10 +155,8 @@ export default function TokenBudgetTracker() {
                     warning: data.budget.warning || false
                   })
                 } else {
-                  // Fallback: fetch budget
                   await fetchBudget(true, true)
                 }
-                // Also trigger global refresh
                 window.dispatchEvent(new Event('dashboard-refresh'))
               } else {
                 alert(data.error || 'Failed to reset budget')
@@ -158,103 +169,176 @@ export default function TokenBudgetTracker() {
             }
           }}
           disabled={refreshing}
-          style={{
-            padding: '4px 12px',
-            background: refreshing ? '#444' : '#5c9aff',
-            color: '#1a1a1a',
-            border: 'none',
-            borderRadius: '4px',
-            fontSize: '12px',
-            cursor: refreshing ? 'not-allowed' : 'pointer',
-            opacity: refreshing ? 0.6 : 1
-          }}
+          className="btn-secondary"
+          style={{ padding: '8px 16px', fontSize: '11px' }}
         >
           {refreshing ? 'Resetting...' : 'Reset'}
         </button>
       </div>
       
-      <div className="budget-summary">
-        <div className="budget-item">
-          <strong>Total Cost:</strong> ${budget.totalCost.toFixed(2)}
+      {/* Budget Summary Grid */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+        gap: '16px',
+        marginBottom: '20px'
+      }}>
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <DollarSign size={10} /> Total Cost
+          </div>
+          <div style={{
+            fontSize: '24px',
+            fontWeight: 700,
+            color: 'var(--atomic-blue)',
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            ${budget.totalCost.toFixed(2)}
+          </div>
         </div>
-        <div className="budget-item">
-          <strong>Tokens Used:</strong> {budget.tokensUsed.toLocaleString()}
+
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            Tokens Used
+          </div>
+          <div style={{
+            fontSize: '24px',
+            fontWeight: 700,
+            color: isExceeded ? 'var(--error-crimson)' : 'var(--text-primary)',
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            {budget.tokensUsed.toLocaleString()}
+          </div>
         </div>
-        <div className="budget-item">
-          <strong>Tokens Remaining:</strong> {budget.tokensRemaining > 0 ? budget.tokensRemaining.toLocaleString() : '0 (exceeded)'}
+
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            Remaining
+          </div>
+          <div style={{
+            fontSize: '24px',
+            fontWeight: 700,
+            color: budget.tokensRemaining > 0 ? 'var(--success-emerald)' : 'var(--error-crimson)',
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            {budget.tokensRemaining > 0 ? budget.tokensRemaining.toLocaleString() : '0'}
+          </div>
+          {isExceeded && (
+            <div style={{ fontSize: '10px', color: 'var(--error-crimson)', marginTop: '4px', fontFamily: 'monospace' }}>
+              +{Math.abs(budget.tokensRemaining).toLocaleString()} over
+            </div>
+          )}
         </div>
-        <div className="budget-item">
-          <strong>Usage:</strong> {isExceeded ? `${usagePercent}% (exceeded)` : `${usagePercent}%`}
+
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <TrendingUp size={10} /> Usage
+          </div>
+          <div style={{
+            fontSize: '24px',
+            fontWeight: 700,
+            color: isExceeded ? 'var(--error-crimson)' : parseFloat(usagePercent) > 80 ? 'var(--warning-amber)' : 'var(--success-emerald)',
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            {usagePercent}%
+          </div>
+          <div style={{ 
+            width: '100%', 
+            height: '4px', 
+            background: 'var(--bg-void)', 
+            marginTop: '8px',
+            border: '1px solid var(--border-subtle)'
+          }}>
+            <div style={{
+              width: `${Math.min(100, parseFloat(usagePercent))}%`,
+              height: '100%',
+              background: isExceeded ? 'var(--error-crimson)' : parseFloat(usagePercent) > 80 ? 'var(--warning-amber)' : 'var(--success-emerald)',
+              boxShadow: `0 0 8px ${isExceeded ? 'var(--error-crimson)' : parseFloat(usagePercent) > 80 ? 'var(--warning-amber)' : 'var(--success-emerald)'}40`
+            }} />
+          </div>
         </div>
       </div>
 
       {budget.warning && (
-        <div className="budget-warning" style={{
-          background: budget.tokensRemaining < 0 ? '#ff6b6b' : '#ffa500',
-          color: '#1a1a1a',
+        <div style={{
+          background: isExceeded ? 'rgba(255, 23, 68, 0.2)' : 'rgba(255, 184, 0, 0.2)',
+          border: `1px solid ${isExceeded ? 'var(--error-crimson)' : 'var(--warning-amber)'}`,
+          color: isExceeded ? 'var(--error-crimson)' : 'var(--warning-amber)',
           padding: '12px',
-          borderRadius: '4px',
+          borderRadius: 0,
           marginBottom: '16px',
           fontSize: '12px',
-          fontWeight: 'bold'
+          fontWeight: 600,
+          fontFamily: 'monospace',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px'
         }}>
-          {budget.tokensRemaining < 0 ? (
-            <>⚠️ Budget exceeded: {Math.abs(budget.tokensRemaining).toLocaleString()} tokens over limit</>
-          ) : (
-            <>⚠️ Budget warning: {usagePercent}% used</>
-          )}
+          ⚠️ {isExceeded 
+            ? `Budget exceeded: ${Math.abs(budget.tokensRemaining).toLocaleString()} tokens over limit`
+            : `Budget warning: ${usagePercent}% used`
+          }
         </div>
       )}
 
-      {(isExceeded || budget.warning) && (
-        <div style={{ marginBottom: '16px' }}>
-          <button
-            onClick={async () => {
-              setResetting(true)
-              try {
-                const res = await fetch('/api/execute/budget/reset', { method: 'POST' })
-                if (res.ok) {
-                  // Refresh budget after reset
-                  await fetchBudget(true, true)
-                } else {
-                  const errorData = await res.json()
-                  alert(errorData.error || 'Failed to reset budget')
-                }
-              } catch (error) {
-                console.error('Failed to reset budget:', error)
-                alert('Failed to reset budget. Please try again.')
-              } finally {
-                setResetting(false)
-              }
-            }}
-            disabled={resetting}
-            style={{
-              padding: '8px 16px',
-              background: resetting ? '#444' : '#5c9aff',
-              color: '#1a1a1a',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              cursor: resetting ? 'not-allowed' : 'pointer',
-              opacity: resetting ? 0.6 : 1
-            }}
-          >
-            {resetting ? 'Resetting...' : 'Reset Budget'}
-          </button>
-        </div>
-      )}
-
-      <div className="cost-breakdown">
-        <h3>Cost Breakdown</h3>
-        <div className="breakdown-item">
-          <span>Plan:</span> <span>${budget.costBreakdown.plan.toFixed(2)}</span>
-        </div>
-        <div className="breakdown-item">
-          <span>Code:</span> <span>${budget.costBreakdown.code.toFixed(2)}</span>
-        </div>
-        <div className="breakdown-item">
-          <span>Chat:</span> <span>${budget.costBreakdown.chat.toFixed(2)}</span>
+      {/* Cost Breakdown */}
+      <div className="glass-surface" style={{ 
+        padding: '16px', 
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 0
+      }}>
+        <h3 style={{ 
+          color: 'var(--text-primary)', 
+          fontSize: '12px', 
+          fontWeight: 600,
+          marginBottom: '12px',
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+          fontFamily: 'Inter, sans-serif'
+        }}>
+          Cost Breakdown
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            padding: '8px 0',
+            borderBottom: '1px solid var(--border-subtle)',
+            color: 'var(--text-secondary)',
+            fontSize: '13px',
+            fontFamily: 'monospace'
+          }}>
+            <span>Plan:</span> 
+            <span style={{ color: 'var(--atomic-blue)', fontWeight: 600 }}>
+              ${budget.costBreakdown.plan.toFixed(2)}
+            </span>
+          </div>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            padding: '8px 0',
+            borderBottom: '1px solid var(--border-subtle)',
+            color: 'var(--text-secondary)',
+            fontSize: '13px',
+            fontFamily: 'monospace'
+          }}>
+            <span>Code:</span> 
+            <span style={{ color: 'var(--warning-amber)', fontWeight: 600 }}>
+              ${budget.costBreakdown.code.toFixed(2)}
+            </span>
+          </div>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            padding: '8px 0',
+            color: 'var(--text-secondary)',
+            fontSize: '13px',
+            fontFamily: 'monospace'
+          }}>
+            <span>Chat:</span> 
+            <span style={{ color: 'var(--cyber-lime)', fontWeight: 600 }}>
+              ${budget.costBreakdown.chat.toFixed(2)}
+            </span>
+          </div>
         </div>
       </div>
     </div>

@@ -47,28 +47,60 @@ export class GitService {
   }
 
   async commit(message: string, files: string[]): Promise<string> {
-    try {
-      // Ensure Git is initialized before committing
-      const isInit = await this.isInitialized()
-      if (!isInit) {
-        await this.initialize()
-      }
+    // HARD CHECK: Verify Git repository exists before attempting commit
+    const isInit = await this.isInitialized()
+    if (!isInit) {
+      throw new Error('Git repository is not initialized. Cannot commit. Call initialize() first or ensure you are in a Git repository.')
+    }
 
+    try {
       // Stage files
       if (files.length > 0) {
-        await execAsync(`git add ${files.join(' ')}`)
+        const addResult = await execAsync(`git add ${files.map(f => `"${f.replace(/"/g, '\\"')}"`).join(' ')}`)
+        // Verify add succeeded
+        if (addResult.stderr && !addResult.stderr.includes('warning')) {
+          throw new Error(`Git add failed: ${addResult.stderr}`)
+        }
       }
 
       // Commit
-      const { stdout } = await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`)
-      const commitHash = stdout.match(/\[(\w+)\]/)?.[1] || 'unknown'
-      return commitHash
-    } catch (error) {
-      // If commit fails because of no changes, that's okay
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      if (errorMsg.includes('nothing to commit') || errorMsg.includes('no changes')) {
+      const commitResult = await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`)
+      
+      // Extract commit hash from output
+      const commitHashMatch = commitResult.stdout.match(/\[(\w+)\]/) || commitResult.stdout.match(/([a-f0-9]{7,})/)
+      if (!commitHashMatch) {
+        // If no hash found, verify commit actually succeeded
+        if (commitResult.stderr && !commitResult.stderr.includes('nothing to commit')) {
+          throw new Error(`Git commit output unclear. stdout: ${commitResult.stdout}, stderr: ${commitResult.stderr}`)
+        }
+        // No changes to commit
         return 'no-changes'
       }
+      
+      const commitHash = commitHashMatch[1]
+      
+      // Verify commit hash is valid (not 'unknown' or empty)
+      if (!commitHash || commitHash === 'unknown' || commitHash.length < 7) {
+        throw new Error(`Invalid commit hash extracted: ${commitHash}. Git commit may have failed.`)
+      }
+      
+      return commitHash
+    } catch (error) {
+      // Extract real error message
+      let errorMsg = 'Unknown error'
+      if (error instanceof Error) {
+        errorMsg = error.message
+      } else if (typeof error === 'object' && error !== null && 'stderr' in error) {
+        const execError = error as { stderr?: string; stdout?: string; message?: string }
+        errorMsg = execError.stderr || execError.message || 'Unknown error'
+      }
+      
+      // If commit fails because of no changes, that's okay
+      if (errorMsg.includes('nothing to commit') || errorMsg.includes('no changes') || errorMsg.includes('nothing added to commit')) {
+        return 'no-changes'
+      }
+      
+      // Throw real error with actual error message
       throw new Error(`Git commit failed: ${errorMsg}`)
     }
   }
@@ -151,19 +183,66 @@ export class GitService {
    * Push to remote repository
    */
   async push(remote: string = 'origin', branch: string = 'main', force: boolean = false): Promise<void> {
-    try {
-      // Check if remote exists
-      try {
-        await execAsync(`git remote get-url ${remote}`)
-      } catch {
-        throw new Error(`Remote '${remote}' does not exist. Use addRemote() first.`)
-      }
+    // HARD CHECK: Verify Git repository exists before attempting push
+    const isInit = await this.isInitialized()
+    if (!isInit) {
+      throw new Error('Git repository is not initialized. Cannot push. Call initialize() first or ensure you are in a Git repository.')
+    }
 
-      // Push to remote
-      const forceFlag = force ? '--force' : ''
-      await execAsync(`git push ${forceFlag} ${remote} ${branch}`.trim())
+    // HARD CHECK: Verify remote exists
+    let remoteUrl: string | null = null
+    try {
+      const remoteResult = await execAsync(`git remote get-url ${remote}`)
+      remoteUrl = remoteResult.stdout.trim()
+      if (!remoteUrl) {
+        throw new Error(`Remote '${remote}' exists but has no URL configured.`)
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      throw new Error(`Remote '${remote}' does not exist or is not configured. Use addRemote() first. Error: ${errorMsg}`)
+    }
+
+    try {
+      // Push to remote
+      const forceFlag = force ? '--force' : ''
+      const pushResult = await execAsync(`git push ${forceFlag} ${remote} ${branch}`.trim())
+      
+      // Verify push actually succeeded
+      if (pushResult.stderr && !pushResult.stderr.includes('up to date') && !pushResult.stderr.includes('To ')) {
+        // Check for authentication errors
+        if (pushResult.stderr.includes('authentication') || pushResult.stderr.includes('permission denied') || pushResult.stderr.includes('403')) {
+          throw new Error(`Git push authentication failed. Check your credentials for remote '${remote}' (${remoteUrl}). Error: ${pushResult.stderr}`)
+        }
+        // Check for other errors
+        if (pushResult.stderr.includes('error') || pushResult.stderr.includes('fatal')) {
+          throw new Error(`Git push failed: ${pushResult.stderr}`)
+        }
+      }
+      
+      // Verify we got some indication of success
+      if (!pushResult.stdout && !pushResult.stderr.includes('up to date') && !pushResult.stderr.includes('To ')) {
+        throw new Error(`Git push output unclear. No indication of success. stdout: ${pushResult.stdout}, stderr: ${pushResult.stderr}`)
+      }
+    } catch (error) {
+      // Extract real error message
+      let errorMsg = 'Unknown error'
+      if (error instanceof Error) {
+        errorMsg = error.message
+      } else if (typeof error === 'object' && error !== null && 'stderr' in error) {
+        const execError = error as { stderr?: string; stdout?: string; message?: string }
+        errorMsg = execError.stderr || execError.message || 'Unknown error'
+        
+        // Provide specific error messages for common issues
+        if (errorMsg.includes('authentication') || errorMsg.includes('permission denied') || errorMsg.includes('403')) {
+          errorMsg = `Authentication failed for remote '${remote}' (${remoteUrl}). Check your credentials.`
+        } else if (errorMsg.includes('not found') || errorMsg.includes('does not exist')) {
+          errorMsg = `Remote repository not found: ${remoteUrl}. Verify the repository exists and you have access.`
+        } else if (errorMsg.includes('connection') || errorMsg.includes('timeout')) {
+          errorMsg = `Connection failed to remote '${remote}' (${remoteUrl}). Check your network connection.`
+        }
+      }
+      
+      // Throw real error with actual error message
       throw new Error(`Git push failed: ${errorMsg}`)
     }
   }

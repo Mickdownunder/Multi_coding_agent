@@ -20,8 +20,9 @@ export async function GET() {
     try {
       const progressContent = await readFile(PROGRESS_FILE, 'utf-8')
       progress = JSON.parse(progressContent)
-    } catch {
-      // Progress file doesn't exist
+    } catch (progressError) {
+      // Progress file doesn't exist - that's fine
+      console.log('Progress file not found, using empty progress')
     }
 
     // Get recently created/modified files
@@ -89,8 +90,14 @@ export async function GET() {
       totalCreated: recentFiles.length
     })
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Error in /api/execute/files:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: errorMessage,
+        files: [],
+        totalCreated: 0
+      },
       { status: 500 }
     )
   }

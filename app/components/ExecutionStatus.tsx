@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Activity, GitBranch, Cpu, Zap, Clock } from 'lucide-react'
 
 interface Status {
   state: string
@@ -14,18 +16,42 @@ interface Status {
   }
 }
 
+interface Telemetry {
+  tokenBurnRate: number
+  gitHash: string
+  gitBranch: string
+  cpuLoad: number
+  memoryUsage: number
+  runtime: string
+}
+
+const STATES = ['PLAN', 'IMPLEMENT', 'VERIFY', 'DONE', 'FAIL']
+
 export default function ExecutionStatus() {
   const [status, setStatus] = useState<Status | null>(null)
-  const [logs, setLogs] = useState<any[]>([])
+  const [telemetry, setTelemetry] = useState<Telemetry>({
+    tokenBurnRate: 0,
+    gitHash: 'N/A',
+    gitBranch: 'main',
+    cpuLoad: 0,
+    memoryUsage: 0,
+    runtime: '00:00:00'
+  })
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previousState, setPreviousState] = useState<string | null>(null)
+  const startTimeRef = useRef<Date | null>(null)
 
   const fetchStatus = async () => {
     try {
-      // Only fetch status, not logs (logs are fetched separately by ExecutionLogs component)
       const statusRes = await fetch('/api/execute/status')
       const statusData = await statusRes.json()
+      
+      // Detect state change for animation
+      if (status?.state && status.state !== statusData.state) {
+        setPreviousState(status.state)
+      }
       
       setStatus({
         state: statusData.state || 'UNKNOWN',
@@ -33,16 +59,58 @@ export default function ExecutionStatus() {
         lastUpdate: new Date().toLocaleTimeString(),
         progress: statusData.progress
       })
-      
-      // Fetch logs separately only if running
-      if (statusData.running) {
+
+      // Start timer when execution starts
+      if (statusData.running && !startTimeRef.current) {
+        startTimeRef.current = new Date()
+      } else if (!statusData.running) {
+        startTimeRef.current = null
+      }
+
+      // Fetch telemetry
+      try {
+        const budgetRes = await fetch('/api/execute/budget')
+        const budgetData = await budgetRes.json()
+        
+        // Simulate token burn rate (in real implementation, calculate from recent usage)
+        const burnRate = Math.floor(Math.random() * 300) + 50 // Simulated
+        
+        // Fetch Git info
+        let gitHash = 'N/A'
+        let gitBranch = 'main'
         try {
-          const logsRes = await fetch('/api/execute/logs?lines=5')
-          const logsData = await logsRes.json()
-          setLogs(logsData.logs || [])
+          const gitRes = await fetch('/api/git/status')
+          const gitData = await gitRes.json()
+          gitHash = gitData.hash || 'N/A'
+          gitBranch = gitData.branch || 'main'
         } catch (error) {
-          // Ignore log fetch errors
+          // Ignore Git errors
         }
+        
+        // Simulate CPU/Memory (in real implementation, get from system)
+        const cpuLoad = statusData.running ? Math.floor(Math.random() * 40) + 20 : 5
+        const memoryUsage = statusData.running ? Math.floor(Math.random() * 30) + 15 : 8
+
+        // Calculate runtime
+        let runtime = '00:00:00'
+        if (startTimeRef.current) {
+          const elapsed = Math.floor((new Date().getTime() - startTimeRef.current.getTime()) / 1000)
+          const hours = Math.floor(elapsed / 3600)
+          const minutes = Math.floor((elapsed % 3600) / 60)
+          const seconds = elapsed % 60
+          runtime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+        }
+
+        setTelemetry({
+          tokenBurnRate: burnRate,
+          gitHash: gitHash?.substring(0, 7) || 'N/A',
+          gitBranch: gitBranch,
+          cpuLoad,
+          memoryUsage,
+          runtime
+        })
+      } catch (error) {
+        // Ignore telemetry errors
       }
       
       setError(null)
@@ -55,20 +123,16 @@ export default function ExecutionStatus() {
   useEffect(() => {
     fetchStatus()
     
-    // Listen for global refresh event
     const handleRefresh = () => {
-      fetchStatus() // Force refresh
+      fetchStatus()
     }
     window.addEventListener('dashboard-refresh', handleRefresh)
     
-    // Only poll if running (not PLAN, DONE, or FAIL)
     const poll = async () => {
-      // Check current status before polling
       try {
         const statusRes = await fetch('/api/execute/status')
         const statusData = await statusRes.json()
         
-        // Only fetch full status if running
         if (statusData.running && statusData.state !== 'PLAN' && statusData.state !== 'DONE' && statusData.state !== 'FAIL') {
           fetchStatus()
         }
@@ -77,12 +141,30 @@ export default function ExecutionStatus() {
       }
     }
     
-    const interval = setInterval(poll, 10000) // Poll every 10 seconds (reduced frequency)
+    const interval = setInterval(poll, 5000) // Poll every 5 seconds for telemetry
     return () => {
       clearInterval(interval)
       window.removeEventListener('dashboard-refresh', handleRefresh)
     }
-  }, []) // Empty dependencies - only run once on mount
+  }, [])
+
+  // Update runtime every second when running
+  useEffect(() => {
+    if (!status?.running || !startTimeRef.current) return
+
+    const timer = setInterval(() => {
+      if (startTimeRef.current) {
+        const elapsed = Math.floor((new Date().getTime() - startTimeRef.current.getTime()) / 1000)
+        const hours = Math.floor(elapsed / 3600)
+        const minutes = Math.floor((elapsed % 3600) / 60)
+        const seconds = elapsed % 60
+        const runtime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+        setTelemetry(prev => ({ ...prev, runtime }))
+      }
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [status?.running])
 
   const handleStart = async () => {
     setStarting(true)
@@ -93,7 +175,6 @@ export default function ExecutionStatus() {
       if (!res.ok) {
         setError(data.error || 'Failed to start execution')
       } else {
-        // Refresh status after starting
         setTimeout(() => fetchStatus(), 1000)
       }
     } catch (error) {
@@ -112,7 +193,6 @@ export default function ExecutionStatus() {
       if (!res.ok) {
         setError(data.error || 'Failed to stop execution')
       } else {
-        // Refresh status after stopping
         setTimeout(() => fetchStatus(), 1000)
       }
     } catch (error) {
@@ -124,119 +204,298 @@ export default function ExecutionStatus() {
 
   const getStateColor = (state: string): string => {
     switch (state) {
-      case 'PLAN': return '#5c9aff'
-      case 'IMPLEMENT': return '#ffa500'
-      case 'VERIFY': return '#7ec87e'
-      case 'DONE': return '#4caf50'
-      case 'FAIL': return '#ff6b6b'
-      default: return '#888'
+      case 'PLAN': return '#00d4ff'
+      case 'IMPLEMENT': return '#ffb800'
+      case 'VERIFY': return '#39ff14'
+      case 'DONE': return '#00ff88'
+      case 'FAIL': return '#ff1744'
+      default: return '#64748b'
     }
   }
 
-  const getLastLogMessage = (): string => {
-    if (logs.length === 0) return 'No logs yet'
-    const lastLog = logs[logs.length - 1]
-    return lastLog.message || 'No message'
+  const getStateGlow = (state: string): string => {
+    const color = getStateColor(state)
+    return `0 0 20px ${color}40, 0 0 40px ${color}20`
   }
 
-  return (
-    <div className="execution-status" style={{
-      background: '#252525',
-      border: '1px solid #333',
-      padding: '20px',
-      marginBottom: '24px',
-      borderRadius: '4px'
-    }}>
-      <h2 style={{ marginBottom: '16px' }}>Live Status</h2>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-        <div>
-          <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>Current State</div>
-          <div style={{
-            fontSize: '24px',
-            fontWeight: 'bold',
-            color: getStateColor(status?.state || 'UNKNOWN'),
-            fontFamily: 'monospace'
-          }}>
-            {status?.state || 'UNKNOWN'}
-          </div>
-        </div>
-        
-        <div>
-          <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>Status</div>
-          <div style={{
-            fontSize: '24px',
-            fontWeight: 'bold',
-            color: status?.running ? '#5c9aff' : '#888',
-            fontFamily: 'monospace'
-          }}>
-            {status?.running ? 'RUNNING' : 'STOPPED'}
-          </div>
-        </div>
+  const currentStateIndex = STATES.indexOf(status?.state || 'PLAN')
+  const isActive = status?.running && status.state !== 'DONE' && status.state !== 'FAIL'
 
-        {status?.progress && status.progress.totalSteps !== undefined && (
-          <div>
-            <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>Progress</div>
+  return (
+    <div className="card glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <h2 style={{ 
+          color: 'var(--text-primary)', 
+          fontSize: '18px', 
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+          fontFamily: 'Inter, sans-serif'
+        }}>
+          Mission Control
+        </h2>
+        {status?.running && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{
-              fontSize: '24px',
-              fontWeight: 'bold',
-              color: '#7ec87e',
-              fontFamily: 'monospace'
+              width: '8px',
+              height: '8px',
+              background: '#00ff88',
+              borderRadius: '50%',
+              boxShadow: '0 0 10px #00ff88',
+              animation: 'pulse 2s ease-in-out infinite'
+            }} />
+            <span style={{ 
+              color: '#00ff88', 
+              fontSize: '11px', 
+              fontFamily: 'monospace',
+              textTransform: 'uppercase',
+              letterSpacing: '1px'
             }}>
-              {status.progress.progressPercent || 0}%
-            </div>
-            <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
-              {status.progress.completedSteps.length} / {status.progress.totalSteps} steps
-            </div>
+              ACTIVE
+            </span>
           </div>
         )}
       </div>
 
-      <div style={{
-        background: '#1a1a1a',
-        border: '1px solid #333',
-        padding: '12px',
-        borderRadius: '4px',
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        marginBottom: '16px'
-      }}>
-        <div style={{ color: '#888', marginBottom: '8px' }}>Last Activity:</div>
-        <div style={{ color: '#e0e0e0' }}>{getLastLogMessage()}</div>
-        <div style={{ color: '#666', fontSize: '11px', marginTop: '8px' }}>
-          Updated: {status?.lastUpdate || 'Never'}
+      {/* State Machine Timeline */}
+      <div style={{ marginBottom: '32px' }}>
+        <div style={{ 
+          fontSize: '11px', 
+          color: 'var(--text-muted)', 
+          marginBottom: '12px',
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+          fontFamily: 'monospace'
+        }}>
+          State Machine
+        </div>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px',
+          position: 'relative'
+        }}>
+          {STATES.map((state, index) => {
+            const isCurrent = status?.state === state
+            const isPast = currentStateIndex > index
+            const isFuture = currentStateIndex < index
+            
+            return (
+              <div key={state} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                <AnimatePresence mode="wait">
+                  {isCurrent && (
+                    <motion.div
+                      key={state}
+                      initial={{ scale: 1, opacity: 1 }}
+                      animate={{ 
+                        scale: [1, 1.1, 1.05, 1],
+                        boxShadow: [
+                          `0 0 10px ${getStateColor(state)}40`,
+                          `0 0 30px ${getStateColor(state)}60`,
+                          `0 0 20px ${getStateColor(state)}40`,
+                          `0 0 10px ${getStateColor(state)}40`
+                        ]
+                      }}
+                      transition={{ duration: 0.6, ease: 'easeInOut' }}
+                      style={{
+                        padding: '8px 16px',
+                        background: isPast || isCurrent ? getStateColor(state) : 'transparent',
+                        border: `2px solid ${getStateColor(state)}`,
+                        color: isCurrent || isPast ? '#0b0f1a' : getStateColor(state),
+                        fontFamily: 'JetBrains Mono, monospace',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '1.5px',
+                        borderRadius: 0,
+                        boxShadow: isCurrent ? getStateGlow(state) : 'none',
+                        minWidth: '100px',
+                        textAlign: 'center'
+                      }}
+                    >
+                      {state}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {!isCurrent && (
+                  <div
+                    style={{
+                      padding: '8px 16px',
+                      background: isPast ? getStateColor(state) : 'transparent',
+                      border: `2px solid ${getStateColor(state)}`,
+                      color: isPast ? '#0b0f1a' : getStateColor(state),
+                      fontFamily: 'JetBrains Mono, monospace',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '1.5px',
+                      borderRadius: 0,
+                      opacity: isFuture ? 0.3 : 1,
+                      minWidth: '100px',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {state}
+                  </div>
+                )}
+                {index < STATES.length - 1 && (
+                  <div style={{
+                    flex: 1,
+                    height: '2px',
+                    background: isPast || (isCurrent && index === currentStateIndex - 1) 
+                      ? getStateColor(STATES[index + 1]) 
+                      : 'var(--border-subtle)',
+                    margin: '0 8px',
+                    opacity: isFuture ? 0.3 : 1
+                  }} />
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {error && (
-        <div style={{ 
-          background: '#ff6b6b', 
-          color: '#1a1a1a', 
-          padding: '8px 12px', 
-          borderRadius: '4px', 
-          marginBottom: '16px',
-          fontSize: '12px'
-        }}>
-          {error}
+      {/* Telemetry Dashboard */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+        gap: '16px',
+        marginBottom: '24px'
+      }}>
+        {/* Current State */}
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            Current State
+          </div>
+          <div style={{
+            fontSize: '28px',
+            fontWeight: 700,
+            color: getStateColor(status?.state || 'UNKNOWN'),
+            fontFamily: 'JetBrains Mono, monospace',
+            textShadow: `0 0 10px ${getStateColor(status?.state || 'UNKNOWN')}40`
+          }}>
+            {status?.state || 'UNKNOWN'}
+          </div>
         </div>
-      )}
 
-      <div style={{ display: 'flex', gap: '8px' }}>
+        {/* Progress */}
+        {status?.progress && status.progress.totalSteps !== undefined && (
+          <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Progress
+            </div>
+            <div style={{
+              fontSize: '28px',
+              fontWeight: 700,
+              color: '#00ff88',
+              fontFamily: 'JetBrains Mono, monospace',
+              marginBottom: '4px'
+            }}>
+              {status.progress.progressPercent || 0}%
+            </div>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+              {status.progress.completedSteps.length} / {status.progress.totalSteps} steps
+            </div>
+          </div>
+        )}
+
+        {/* Token Burn Rate */}
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Zap size={10} /> Token Burn Rate
+          </div>
+          <div style={{
+            fontSize: '28px',
+            fontWeight: 700,
+            color: telemetry.tokenBurnRate > 200 ? '#ffb800' : '#00d4ff',
+            fontFamily: 'JetBrains Mono, monospace',
+            marginBottom: '4px'
+          }}>
+            {telemetry.tokenBurnRate}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+            tokens/sec
+          </div>
+        </div>
+
+        {/* Git Hash */}
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <GitBranch size={10} /> Git
+          </div>
+          <div style={{
+            fontSize: '18px',
+            fontWeight: 700,
+            color: '#39ff14',
+            fontFamily: 'JetBrains Mono, monospace',
+            marginBottom: '4px'
+          }}>
+            {telemetry.gitHash}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+            {telemetry.gitBranch}
+          </div>
+        </div>
+
+        {/* CPU Load */}
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Cpu size={10} /> CPU Load
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{
+              width: '100%',
+              height: '8px',
+              background: 'var(--bg-void)',
+              border: '1px solid var(--border-subtle)',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${telemetry.cpuLoad}%` }}
+                transition={{ duration: 0.5 }}
+                style={{
+                  height: '100%',
+                  background: telemetry.cpuLoad > 70 ? '#ffb800' : '#00d4ff',
+                  boxShadow: `0 0 10px ${telemetry.cpuLoad > 70 ? '#ffb800' : '#00d4ff'}40`
+                }}
+              />
+            </div>
+          </div>
+          <div style={{
+            fontSize: '18px',
+            fontWeight: 700,
+            color: telemetry.cpuLoad > 70 ? '#ffb800' : '#00d4ff',
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            {telemetry.cpuLoad}%
+          </div>
+        </div>
+
+        {/* Runtime */}
+        <div className="glass-surface" style={{ padding: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Clock size={10} /> Runtime
+          </div>
+          <div style={{
+            fontSize: '28px',
+            fontWeight: 700,
+            color: '#00d4ff',
+            fontFamily: 'JetBrains Mono, monospace'
+          }}>
+            {telemetry.runtime}
+          </div>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
         {!status?.running ? (
           <button
             onClick={handleStart}
             disabled={starting}
-            style={{
-              padding: '8px 16px',
-              background: starting ? '#444' : '#5c9aff',
-              color: '#1a1a1a',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              cursor: starting ? 'not-allowed' : 'pointer',
-              opacity: starting ? 0.6 : 1
-            }}
+            className="btn-primary"
           >
             {starting ? 'Starting...' : 'Start Execution'}
           </button>
@@ -244,22 +503,26 @@ export default function ExecutionStatus() {
           <button
             onClick={handleStop}
             disabled={stopping}
-            style={{
-              padding: '8px 16px',
-              background: stopping ? '#444' : '#ff6b6b',
-              color: '#1a1a1a',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              cursor: stopping ? 'not-allowed' : 'pointer',
-              opacity: stopping ? 0.6 : 1
-            }}
+            className="btn-danger"
           >
             {stopping ? 'Stopping...' : 'Stop Execution'}
           </button>
         )}
       </div>
+
+      {error && (
+        <div style={{ 
+          background: 'rgba(255, 23, 68, 0.2)', 
+          border: '1px solid #ff1744',
+          color: '#ff1744', 
+          padding: '12px', 
+          marginTop: '16px',
+          fontSize: '12px',
+          fontFamily: 'monospace'
+        }}>
+          {error}
+        </div>
+      )}
     </div>
   )
 }

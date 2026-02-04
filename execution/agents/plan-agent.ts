@@ -152,16 +152,26 @@ export class PlanAgent extends Agent {
       await this.gitService.commit('Generate plan from intent', [PLAN_FILE])
       await this.log('Plan committed to Git')
       
+      // Check if remote exists, if not, try to create one automatically
+      let remoteUrl = await this.gitService.getRemoteUrl('origin')
+      
+      if (!remoteUrl) {
+        // No remote exists - try to create GitHub repo automatically
+        await this.log('No Git remote found. Attempting to create GitHub repository...')
+        remoteUrl = await this.tryAutoCreateGitHubRepo(plan.metadata.appName || appName)
+      }
+      
       // Auto-push to remote if configured
-      try {
-        const remoteUrl = await this.gitService.getRemoteUrl('origin')
-        if (remoteUrl) {
+      if (remoteUrl) {
+        try {
           await this.gitService.push('origin', 'main', false)
           await this.log('✅ Pushed plan to origin/main')
+        } catch (error) {
+          // Push failed, but don't fail plan generation - just log it
+          await this.log(`⚠️ Auto-push failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
-      } catch (error) {
-        // Push failed, but don't fail plan generation - just log it
-        await this.log(`⚠️ Auto-push failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      } else {
+        await this.log('ℹ️ No Git remote configured. You can add one manually in the Files tab.')
       }
     } catch (error) {
       await this.log(`WARNING: Git commit failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -213,6 +223,76 @@ export class PlanAgent extends Agent {
     
     // Default: use timestamp-based name
     return `app-${Date.now().toString(36)}`
+  }
+
+  /**
+   * Try to automatically create a GitHub repository based on app name
+   * Returns the repo URL if successful, null otherwise
+   */
+  private async tryAutoCreateGitHubRepo(appName: string): Promise<string | null> {
+    try {
+      // Check if GitHub token is available in environment or config
+      const githubToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+      
+      if (!githubToken) {
+        await this.log('ℹ️ No GitHub token found. Set GITHUB_TOKEN or GH_TOKEN environment variable for auto-repo creation.')
+        return null
+      }
+
+      // Generate repo name from app name
+      const repoName = this.sanitizeRepoName(appName)
+      
+      await this.log(`Creating GitHub repository: ${repoName}...`)
+
+      // Create GitHub repository via API
+      const repoData = {
+        name: repoName,
+        description: `Auto-generated repository for: ${appName}`,
+        private: false,
+        auto_init: false
+      }
+
+      const createResponse = await fetch('https://api.github.com/user/repos', {
+        method: 'POST',
+        headers: {
+          'Authorization': `token ${githubToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(repoData)
+      })
+
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json()
+        await this.log(`⚠️ Failed to create GitHub repo: ${errorData.message || 'Unknown error'}`)
+        return null
+      }
+
+      const repo = await createResponse.json()
+      const repoUrl = repo.clone_url
+
+      // Add remote to local Git repository
+      await this.gitService.addRemote('origin', repoUrl)
+      await this.log(`✅ Created GitHub repository and added as 'origin' remote: ${repoUrl}`)
+
+      return repoUrl
+    } catch (error) {
+      await this.log(`⚠️ Auto-create GitHub repo failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      return null
+    }
+  }
+
+  /**
+   * Sanitize app name for use as GitHub repository name
+   * GitHub repo names must be lowercase, alphanumeric, hyphens, underscores
+   */
+  private sanitizeRepoName(appName: string): string {
+    return appName
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-') // Replace invalid chars with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+      .substring(0, 100) // GitHub limit is 100 chars
   }
 
   private planToMarkdown(plan: Plan): string {

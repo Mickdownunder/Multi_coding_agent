@@ -9,6 +9,7 @@ import ExecutionLogs from './components/ExecutionLogs';
 import TokenBudgetTracker from './components/TokenBudgetTracker';
 import LiveFiles from './components/LiveFiles';
 import FileLocationInfo from './components/FileLocationInfo';
+import CommandBar from './components/CommandBar';
 
 const ARTIFACT_FILES = ['intent.md', 'rules.md', 'plan.md', 'report.md'] as const;
 
@@ -135,14 +136,23 @@ export default function Page() {
   const renderDashboard = () => (
     <div className="space-y-6">
       {/* Current State */}
-      <section className="card p-6" style={{ background: '#1e293b', borderColor: '#334155' }}>
-        <h3 className="text-lg font-bold mb-4" style={{ color: '#f1f5f9' }}>Current State</h3>
+      <section className="card glass-card p-6">
+        <h3 className="text-lg font-bold mb-4" style={{ 
+          color: 'var(--text-primary)',
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+          fontFamily: 'Inter, sans-serif'
+        }}>Current State</h3>
         <div className="flex items-center gap-4">
           <div className={`status-badge status-${currentState.toLowerCase()}`}>
             {currentState}
           </div>
           {(currentState === 'PLAN' || currentState === 'DONE' || currentState === 'FAIL') && (
-            <p className="text-sm" style={{ color: '#94a3b8' }}>
+            <p className="text-sm" style={{ 
+              color: 'var(--text-muted)',
+              fontFamily: 'monospace',
+              fontSize: '12px'
+            }}>
               {currentState === 'PLAN' && 'Ready to start execution'}
               {currentState === 'DONE' && 'Execution completed successfully'}
               {currentState === 'FAIL' && 'Execution failed - check logs'}
@@ -152,9 +162,14 @@ export default function Page() {
       </section>
 
       {/* Artifacts */}
-      <section className="card p-6" style={{ background: '#1e293b', borderColor: '#334155' }}>
+      <section className="card glass-card p-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold" style={{ color: '#f1f5f9' }}>Control Files</h3>
+          <h3 className="text-lg font-bold" style={{ 
+            color: 'var(--text-primary)',
+            textTransform: 'uppercase',
+            letterSpacing: '1px',
+            fontFamily: 'Inter, sans-serif'
+          }}>Control Files</h3>
           <button
             onClick={async () => {
               if (!confirm('Alle Dateien außer rules.md löschen?\n\n- Control-Dateien (intent.md, plan.md, report.md, state.txt)\n- Alle erstellten App-Dateien (app/app/, app/todo/, etc.)')) {
@@ -202,26 +217,14 @@ export default function Page() {
               }
             }}
             disabled={isRefreshing}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+            className="btn-secondary"
             style={{ 
-              background: isRefreshing ? '#475569' : '#334155',
-              color: '#cbd5e1',
-              border: '1px solid #475569',
+              padding: '8px 16px',
+              fontSize: '11px',
               opacity: isRefreshing ? 0.7 : 1,
               cursor: isRefreshing ? 'not-allowed' : 'pointer'
             }}
-            onMouseEnter={(e) => {
-              if (!isRefreshing) {
-                e.currentTarget.style.background = '#475569';
-                e.currentTarget.style.borderColor = '#3b82f6';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isRefreshing) {
-                e.currentTarget.style.background = '#334155';
-                e.currentTarget.style.borderColor = '#475569';
-              }
-            }}
+            disabled={isRefreshing}
           >
             {isRefreshing ? 'Clearing...' : 'Clear All'}
           </button>
@@ -345,8 +348,6 @@ export default function Page() {
       <ExecutionStatus />
       <ExecutionLogs />
       <TokenBudgetTracker />
-      <LiveFiles />
-      <FileLocationInfo />
     </div>
   );
 
@@ -359,11 +360,14 @@ export default function Page() {
   );
 
   return (
-    <DashboardLayout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {activeTab === 'dashboard' && renderDashboard()}
-      {activeTab === 'assistant' && renderAssistant()}
-      {activeTab === 'monitor' && renderMonitor()}
-      {activeTab === 'files' && renderFiles()}
-    </DashboardLayout>
+    <>
+      <CommandBar />
+      <DashboardLayout activeTab={activeTab} setActiveTab={setActiveTab}>
+        {activeTab === 'dashboard' && renderDashboard()}
+        {activeTab === 'assistant' && renderAssistant()}
+        {activeTab === 'monitor' && renderMonitor()}
+        {activeTab === 'files' && renderFiles()}
+      </DashboardLayout>
+    </>
   );
 }

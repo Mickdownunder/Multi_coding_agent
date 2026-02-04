@@ -1,40 +1,36 @@
-import React, { useState } from 'react';
-import { Plus, RotateCcw } from 'lucide-react';
+'use client';
 
-export const Counter: React.FC = () => {
-  const [count, setCount] = useState<number>(0);
+import { useState } from 'react';
 
-  const increment = () => setCount((prev) => prev + 1);
-  const reset = () => setCount(0);
+export default function Counter() {
+  const [count, setCount] = useState(0);
 
   return (
-    <div className="p-6 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 max-w-sm mx-auto">
-      <div className="text-center">
-        <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-          Current Count
-        </h3>
-        <div className="mt-2 text-5xl font-bold text-slate-900 dark:text-white">
-          {count}
-        </div>
+    <div className="p-8 border rounded-2xl bg-card text-card-foreground shadow-lg flex flex-col items-center gap-6 min-w-[300px]">
+      <h2 className="text-xl font-semibold tracking-tight">Interactive Counter</h2>
+      <div className="text-7xl font-black tabular-nums transition-all">
+        {count}
       </div>
-
-      <div className="mt-8 flex items-center justify-center gap-4">
+      <div className="flex gap-4 w-full">
         <button
-          onClick={increment}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+          onClick={() => setCount(prev => prev - 1)}
+          className="flex-1 px-4 py-3 bg-secondary text-secondary-foreground rounded-lg font-medium hover:opacity-80 transition-all active:scale-95 border"
         >
-          <Plus className="w-5 h-5" />
+          Decrement
+        </button>
+        <button
+          onClick={() => setCount(prev => prev + 1)}
+          className="flex-1 px-4 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-all active:scale-95"
+        >
           Increment
         </button>
-        
-        <button
-          onClick={reset}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-lg transition-all active:scale-95"
-        >
-          <RotateCcw className="w-5 h-5" />
-          Reset
-        </button>
       </div>
+      <button 
+        onClick={() => setCount(0)}
+        className="text-xs text-muted-foreground hover:underline"
+      >
+        Reset Counter
+      </button>
     </div>
   );
-};
+}

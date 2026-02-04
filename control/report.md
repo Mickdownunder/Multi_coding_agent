@@ -1,6 +1,6 @@
 # Verification Report
 
-Generated: 2026-02-04T13:24:22.655Z
+Generated: 2026-02-04T13:43:50.231Z
 
 ## Overall Status
 
@@ -18,7 +18,7 @@ Generated: 2026-02-04T13:24:22.655Z
 
 ## Errors
 
-- Missing files: lib/todo-store.ts, app/api/todos/route.ts, app/api/todos/[id]/route.ts, app/components/todo/TodoItem.tsx, app/components/todo/TodoForm.tsx, app/components/todo/TodoList.tsx, app/todo/page.tsx, app/todo/page.tsx, app/components/todo/TodoItem.tsx, app/todo/page.tsx
+- Missing files: app/components/Counter.tsx, app/components/Counter.tsx, app/components/Counter.tsx
 - Syntax errors: Command failed: npx tsc --noEmit
 npm warn Unknown env config "npm-globalconfig". This will stop working in the next major version of npm.
 npm warn Unknown env config "verify-deps-before-run". This will stop working in the next major version of npm.
@@ -34,6 +34,18 @@ npm warn Unknown env config "npm-globalconfig". This will stop working in the ne
 npm warn Unknown env config "verify-deps-before-run". This will stop working in the next major version of npm.
 npm warn Unknown env config "_jsr-registry". This will stop working in the next major version of npm.
 ⚠ You are using a non-standard "NODE_ENV" value in your environment. This creates inconsistencies in the project and is strongly advised against. Read more: https://nextjs.org/docs/messages/non-standard-node-env
-⨯ Unable to acquire lock at /Users/michaellabitzke/Documents/control-system/.next/lock, is another instance of next build running?
+Failed to compile.
+
+./execution/agents/verify-agent.ts:45:52
+Type error: Property 'verifyAll' does not exist on type 'VerificationService'.
+
+[0m [90m 43 |[39m
+ [90m 44 |[39m     [90m// Run verification checks[39m
+[31m[1m>[22m[39m[90m 45 |[39m     [36mconst[39m results [33m=[39m [36mawait[39m [36mthis[39m[33m.[39mverificationService[33m.[39mverifyAll({
+ [90m    |[39m                                                    [31m[1m^[22m[39m
+ [90m 46 |[39m       planContent[33m,[39m
+ [90m 47 |[39m       rules[33m,[39m
+ [90m 48 |[39m       intent[0m
+Next.js build worker exited with code: 1 and signal: null
 
 

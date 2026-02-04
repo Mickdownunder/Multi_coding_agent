@@ -27,3 +27,18 @@ export interface PasswordResult {
   /** ISO timestamp of when the password was generated */
   timestamp: string;
 }
+
+export interface PasswordStats {
+  /** The count of uppercase characters */
+  uppercaseCount: number;
+  /** The count of lowercase characters */
+  lowercaseCount: number;
+  /** The count of numeric characters */
+  numberCount: number;
+  /** The count of special symbol characters */
+  symbolCount: number;
+  /** The total length of the password */
+  length: number;
+  /** The calculated entropy value */
+  entropy: number;
+}

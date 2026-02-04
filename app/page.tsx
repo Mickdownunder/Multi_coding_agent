@@ -1,300 +1,205 @@
+ 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import ReactMarkdown from 'react-markdown'
+import React, { useState, useEffect, useCallback } from 'react'
+import { 
+  MessageSquare, 
+  Settings, 
+  Activity, 
+  Play, 
+  Square, 
+  RefreshCw, 
+  AlertCircle,
+  ShieldCheck,
+  Coins
+} from 'lucide-react'
+import ChatInterface from '@/components/assistant/ChatInterface'
+import ControlInterface from '@/components/assistant/ControlInterface'
+import MonitorInterface from '@/components/assistant/MonitorInterface'
+import { StatusResponse, BudgetResponse, LogEntry, CreatedFile } from '@/types/api'
 
-type State = 'PLAN' | 'IMPLEMENT' | 'VERIFY' | 'DONE' | 'FAIL'
-const VALID_STATES: State[] = ['PLAN', 'IMPLEMENT', 'VERIFY', 'DONE']
+export default function ControlSystemPage() {
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'assistant' | 'control' | 'monitor'>('assistant')
 
-type FileData = {
-  content: string | null
-  error: string | null
-  loading: boolean
-}
+  // Execution State
+  const [status, setStatus] = useState<StatusResponse | null>(null)
+  const [budget, setBudget] = useState<BudgetResponse | null>(null)
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [files, setFiles] = useState<CreatedFile[]>([])
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-type EditState = {
-  isEditing: boolean
-  draft: string
-  saving: boolean
-}
-
-const ARTIFACT_FILES = ['intent.md', 'rules.md', 'plan.md', 'report.md'] as const
-const EDITABLE_FILES = ['intent.md', 'rules.md'] as const
-
-export default function Dashboard() {
-  // State management
-  const [currentState, setCurrentState] = useState<string | null>(null)
-  const [stateError, setStateError] = useState<string | null>(null)
-  const [stateLoading, setStateLoading] = useState(true)
-  const [settingState, setSettingState] = useState<string | null>(null)
-
-  // Files data
-  const [files, setFiles] = useState<Record<string, FileData>>(() => {
-    const initial: Record<string, FileData> = {}
-    ARTIFACT_FILES.forEach(f => {
-      initial[f] = { content: null, error: null, loading: true }
-    })
-    return initial
-  })
-
-  // Edit states for editable files
-  const [editStates, setEditStates] = useState<Record<string, EditState>>(() => {
-    const initial: Record<string, EditState> = {}
-    EDITABLE_FILES.forEach(f => {
-      initial[f] = { isEditing: false, draft: '', saving: false }
-    })
-    return initial
-  })
-
-  // Fetch current state
-  const fetchState = useCallback(async () => {
-    setStateLoading(true)
-    setStateError(null)
+  // Polling for updates
+  const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/state')
-      const data = await res.json()
-      if (!res.ok) {
-        setStateError(data.error || 'Failed to fetch state')
-        setCurrentState(null)
-      } else {
-        setCurrentState(data.state)
-      }
-    } catch {
-      setStateError('Failed to connect to server')
-      setCurrentState(null)
-    } finally {
-      setStateLoading(false)
+      const [statusRes, budgetRes, logsRes, filesRes] = await Promise.all([
+        fetch('/api/execute/status').then(res => res.json()),
+        fetch('/api/execute/budget').then(res => res.json()),
+        fetch('/api/execute/logs?lines=50').then(res => res.json()),
+        fetch('/api/execute/files').then(res => res.json())
+      ])
+
+      setStatus(statusRes)
+      setBudget(budgetRes)
+      setLogs(logsRes.logs || [])
+      setFiles(filesRes.files || [])
+      setError(null)
+    } catch (err) {
+      console.error('Failed to fetch system status:', err)
+      setError('Connection to backend lost')
     }
   }, [])
 
-  // Fetch a single file
-  const fetchFile = useCallback(async (filename: string) => {
-    setFiles(prev => ({
-      ...prev,
-      [filename]: { ...prev[filename], loading: true, error: null }
-    }))
-    try {
-      const res = await fetch(`/api/files?name=${encodeURIComponent(filename)}`)
-      const data = await res.json()
-      if (!res.ok) {
-        setFiles(prev => ({
-          ...prev,
-          [filename]: { content: null, error: data.error || 'Failed to fetch', loading: false }
-        }))
-      } else {
-        setFiles(prev => ({
-          ...prev,
-          [filename]: { content: data.content, error: null, loading: false }
-        }))
-      }
-    } catch {
-      setFiles(prev => ({
-        ...prev,
-        [filename]: { content: null, error: 'Failed to connect', loading: false }
-      }))
-    }
-  }, [])
-
-  // Fetch all data
-  const fetchAll = useCallback(() => {
-    fetchState()
-    ARTIFACT_FILES.forEach(f => fetchFile(f))
-  }, [fetchState, fetchFile])
-
-  // Initial fetch
   useEffect(() => {
-    fetchAll()
-  }, [fetchAll])
+    fetchData()
+    const interval = setInterval(fetchData, 3000)
+    return () => clearInterval(interval)
+  }, [fetchData])
 
-  // Set state
-  const handleSetState = async (newState: State) => {
-    setSettingState(newState)
+  const handleStartExecution = async () => {
+    setIsRefreshing(true)
     try {
-      const res = await fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: newState })
-      })
-      if (res.ok) {
-        setCurrentState(newState)
-        setStateError(null)
-      } else {
-        const data = await res.json()
-        setStateError(data.error || 'Failed to set state')
-      }
-    } catch {
-      setStateError('Failed to connect to server')
+      const res = await fetch('/api/execute/start', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to start')
+      setActiveTab('monitor')
+    } catch (err: any) {
+      alert(err.message)
     } finally {
-      setSettingState(null)
+      setIsRefreshing(false)
+      fetchData()
     }
   }
 
-  // Start editing
-  const handleEdit = (filename: string) => {
-    const fileData = files[filename]
-    if (fileData.content !== null) {
-      setEditStates(prev => ({
-        ...prev,
-        [filename]: { isEditing: true, draft: fileData.content!, saving: false }
-      }))
-    }
-  }
-
-  // Cancel editing
-  const handleCancelEdit = (filename: string) => {
-    setEditStates(prev => ({
-      ...prev,
-      [filename]: { isEditing: false, draft: '', saving: false }
-    }))
-  }
-
-  // Save file
-  const handleSave = async (filename: string) => {
-    const editState = editStates[filename]
-    setEditStates(prev => ({
-      ...prev,
-      [filename]: { ...prev[filename], saving: true }
-    }))
-
+  const handleStopExecution = async () => {
+    setIsRefreshing(true)
     try {
-      const res = await fetch('/api/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, content: editState.draft })
-      })
-      if (res.ok) {
-        setFiles(prev => ({
-          ...prev,
-          [filename]: { content: editState.draft, error: null, loading: false }
-        }))
-        setEditStates(prev => ({
-          ...prev,
-          [filename]: { isEditing: false, draft: '', saving: false }
-        }))
-      } else {
-        const data = await res.json()
-        alert(`Failed to save: ${data.error}`)
-        setEditStates(prev => ({
-          ...prev,
-          [filename]: { ...prev[filename], saving: false }
-        }))
-      }
-    } catch {
-      alert('Failed to connect to server')
-      setEditStates(prev => ({
-        ...prev,
-        [filename]: { ...prev[filename], saving: false }
-      }))
+      await fetch('/api/execute/stop', { method: 'POST' })
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setIsRefreshing(false)
+      fetchData()
     }
-  }
-
-  // Update draft
-  const handleDraftChange = (filename: string, value: string) => {
-    setEditStates(prev => ({
-      ...prev,
-      [filename]: { ...prev[filename], draft: value }
-    }))
-  }
-
-  const isEditable = (filename: string): filename is typeof EDITABLE_FILES[number] => {
-    return (EDITABLE_FILES as readonly string[]).includes(filename)
   }
 
   return (
-    <div className="dashboard">
-      <div className="header-row">
-        <h1>Control Dashboard</h1>
-        <button className="refresh-btn" onClick={fetchAll}>
-          Refresh
-        </button>
-      </div>
+    <div className="flex flex-col h-screen bg-slate-50 text-slate-900">
+      {/* Header / Navigation */}
+      <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-600 p-2 rounded-lg">
+            <ShieldCheck className="w-6 h-6 text-white" />
+          </div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-800">AI Control System</h1>
+        </div>
 
-      {/* Status Section */}
-      <section className="status-section">
-        <h2>Current State</h2>
-        {stateLoading ? (
-          <div className="loading">Loading...</div>
-        ) : stateError ? (
-          <div className="error">{stateError}</div>
-        ) : (
-          <div className={`state-display state-${currentState || 'unknown'}`}>
-            {currentState || 'UNKNOWN'}
+        <nav className="flex bg-slate-100 p-1 rounded-xl">
+          <button
+            onClick={() => setActiveTab('assistant')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'assistant' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Assistant
+          </button>
+          <button
+            onClick={() => setActiveTab('control')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'control' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Control
+          </button>
+          <button
+            onClick={() => setActiveTab('monitor')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'monitor' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            Monitor
+          </button>
+        </nav>
+
+        <div className="flex items-center gap-4">
+          {/* Global Status Indicators */}
+          <div className="flex items-center gap-4 px-4 py-2 bg-slate-50 rounded-lg border border-slate-200">
+             <div className="flex items-center gap-2">
+                <Coins className="w-4 h-4 text-amber-500" />
+                <span className="text-xs font-mono">${budget?.totalCost?.toFixed(4) || '0.0000'}</span>
+             </div>
+             <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${status?.running ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`} />
+                <span className="text-xs font-bold uppercase tracking-wider">{status?.state || 'IDLE'}</span>
+             </div>
+          </div>
+
+          {status?.running ? (
+            <button
+              onClick={handleStopExecution}
+              disabled={isRefreshing}
+              className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium"
+            >
+              <Square className="w-4 h-4 fill-current" />
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={handleStartExecution}
+              disabled={isRefreshing || !status || status.state === 'DONE'}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-md disabled:opacity-50 font-medium"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              Start Execution
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-hidden relative">
+        {error && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-full shadow-lg text-sm">
+            <AlertCircle className="w-4 h-4" />
+            {error}
           </div>
         )}
 
-        <div className="state-controls">
-          {VALID_STATES.map(state => (
-            <button
-              key={state}
-              className={`state-btn ${currentState === state ? 'active' : ''}`}
-              onClick={() => handleSetState(state)}
-              disabled={settingState !== null || currentState === state}
-            >
-              {settingState === state ? '...' : state}
-            </button>
-          ))}
+        <div className="h-full w-full max-w-[1600px] mx-auto p-6 overflow-hidden flex flex-col">
+          {activeTab === 'assistant' && (
+            <ChatInterface onIntentGenerated={() => setActiveTab('control')} />
+          )}
+          
+          {activeTab === 'control' && (
+            <ControlInterface />
+          )}
+
+          {activeTab === 'monitor' && (
+            <MonitorInterface 
+              status={status} 
+              logs={logs} 
+              files={files} 
+              budget={budget} 
+            />
+          )}
         </div>
-      </section>
+      </main>
 
-      {/* Artifacts Grid */}
-      <section>
-        <h2>Control Files</h2>
-        <div className="artifacts-grid">
-          {ARTIFACT_FILES.map(filename => {
-            const fileData = files[filename]
-            const editState = editStates[filename]
-            const canEdit = isEditable(filename)
-
-            return (
-              <div key={filename} className="artifact-card">
-                <h3>
-                  {filename}
-                  {canEdit && !editState?.isEditing && fileData.content !== null && (
-                    <button className="edit-btn" onClick={() => handleEdit(filename)}>
-                      Edit
-                    </button>
-                  )}
-                </h3>
-
-                {fileData.loading ? (
-                  <div className="loading">Loading...</div>
-                ) : fileData.error ? (
-                  <div className="error">{fileData.error}</div>
-                ) : editState?.isEditing ? (
-                  <div>
-                    <textarea
-                      className="edit-textarea"
-                      value={editState.draft}
-                      onChange={e => handleDraftChange(filename, e.target.value)}
-                      disabled={editState.saving}
-                    />
-                    <div className="edit-actions">
-                      <button
-                        className="save-btn"
-                        onClick={() => handleSave(filename)}
-                        disabled={editState.saving}
-                      >
-                        {editState.saving ? 'Saving...' : 'Save'}
-                      </button>
-                      <button
-                        className="cancel-btn"
-                        onClick={() => handleCancelEdit(filename)}
-                        disabled={editState.saving}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="artifact-content">
-                    <ReactMarkdown>{fileData.content || ''}</ReactMarkdown>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+      {/* Footer Status Bar */}
+      <footer className="px-6 py-2 bg-white border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-400 uppercase tracking-widest font-semibold">
+        <div className="flex gap-4">
+          <span>Engine: v1.0.0</span>
+          <span>State: {status?.state || 'Unknown'}</span>
         </div>
-      </section>
+        <div className="flex items-center gap-2">
+          <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <span>Auto-sync active</span>
+        </div>
+      </footer>
     </div>
   )
 }

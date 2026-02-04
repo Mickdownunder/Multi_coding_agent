@@ -1,6 +1,6 @@
 import { writeFile, readFile, unlink, stat } from 'fs/promises'
 import { join } from 'path'
-import { FileValidator } from './file-validator'
+import { FileValidator, PolicyViolationError } from './file-validator'
 import { FileTransaction } from './file-transaction'
 import { Context } from '../types/context'
 
@@ -20,9 +20,38 @@ export class FileService {
 
   async createFile(path: string, content: string, validate: boolean = true): Promise<void> {
     if (validate) {
-      const validation = await this.validator.validateSyntax(path, content)
-      if (!validation.valid) {
-        throw new Error(`Validation failed: ${validation.errors.join(', ')}`)
+      // HARD ENFORCEMENT: Validate against rules first
+      const rulesValidation = await this.validator.validateAgainstRules(path, content)
+      if (!rulesValidation.valid) {
+        // Determine violation type and suggested fix
+        const firstError = rulesValidation.errors[0] || ''
+        let violationType = 'unknown'
+        let suggestedFix = 'Review the policy violations and fix the code accordingly'
+        
+        if (firstError.includes('next/document')) {
+          violationType = 'forbidden-import'
+          suggestedFix = 'Move next/document import to _document.tsx file or remove it'
+        } else if (firstError.includes('any')) {
+          violationType = 'forbidden-type'
+          suggestedFix = 'Replace "any" with "unknown" or a specific type'
+        } else if (firstError.includes('try/catch')) {
+          violationType = 'missing-error-handling'
+          suggestedFix = 'Wrap async operations in try/catch blocks'
+        }
+
+        throw new PolicyViolationError(
+          `Policy violation: Cannot create file ${path}`,
+          rulesValidation.errors,
+          path,
+          violationType,
+          suggestedFix
+        )
+      }
+
+      // Then validate syntax
+      const syntaxValidation = await this.validator.validateSyntax(path, content)
+      if (!syntaxValidation.valid) {
+        throw new Error(`Validation failed: ${syntaxValidation.errors.join(', ')}`)
       }
     }
 
@@ -53,6 +82,35 @@ export class FileService {
       newContent = lines.join('\n')
     }
 
+    // HARD ENFORCEMENT: Validate against rules first
+    const rulesValidation = await this.validator.validateAgainstRules(path, newContent)
+    if (!rulesValidation.valid) {
+      // Determine violation type and suggested fix
+      const firstError = rulesValidation.errors[0] || ''
+      let violationType = 'unknown'
+      let suggestedFix = 'Review the policy violations and fix the code accordingly'
+      
+      if (firstError.includes('next/document')) {
+        violationType = 'forbidden-import'
+        suggestedFix = 'Move next/document import to _document.tsx file or remove it'
+      } else if (firstError.includes('any')) {
+        violationType = 'forbidden-type'
+        suggestedFix = 'Replace "any" with "unknown" or a specific type'
+      } else if (firstError.includes('try/catch')) {
+        violationType = 'missing-error-handling'
+        suggestedFix = 'Wrap async operations in try/catch blocks'
+      }
+
+      throw new PolicyViolationError(
+        `Policy violation: Cannot modify file ${path}`,
+        rulesValidation.errors,
+        path,
+        violationType,
+        suggestedFix
+      )
+    }
+
+    // Then validate syntax
     const validation = await this.validator.validateSyntax(path, newContent)
     if (!validation.valid) {
       throw new Error(`Validation failed: ${validation.errors.join(', ')}`)
@@ -129,6 +187,12 @@ export class FileService {
   async validateOperation(operation: { type: string; path: string; content?: string }): Promise<boolean> {
     if (operation.type === 'create' || operation.type === 'modify') {
       if (!operation.content) {
+        return false
+      }
+
+      // HARD ENFORCEMENT: Check rules first
+      const rulesValidation = await this.validator.validateAgainstRules(operation.path, operation.content)
+      if (!rulesValidation.valid) {
         return false
       }
 

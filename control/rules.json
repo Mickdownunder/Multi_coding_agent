@@ -1,0 +1,116 @@
+{
+  "version": "1.0.0",
+  "enforcement": "hard",
+  "forbiddenImports": [
+    "next/document"
+  ],
+  "allowedImports": {
+    "next/document": ["pages/_document.tsx", "app/_document.tsx"]
+  },
+  "enforceTailwind": true,
+  "disallowAny": true,
+  "requireTypeScript": true,
+  "enforceStrictMode": true,
+  "forbiddenPatterns": [
+    {
+      "pattern": "any",
+      "type": "type",
+      "message": "Use of 'any' type is forbidden. Use proper TypeScript types.",
+      "exceptions": ["// eslint-disable", "// @ts-ignore"]
+    },
+    {
+      "pattern": "next/document",
+      "type": "import",
+      "message": "Import of 'next/document' is forbidden except in _document.tsx files.",
+      "fileExceptions": ["_document.tsx"]
+    }
+  ],
+  "requiredPatterns": [
+    {
+      "pattern": "try\\s*\\{",
+      "type": "error-handling",
+      "message": "Async operations must have try/catch blocks",
+      "fileTypes": [".ts", ".tsx"]
+    }
+  ],
+  "fileStructure": {
+    "apiRoutes": "app/api/**/route.ts",
+    "components": ["app/components/**/*.tsx", "components/**/*.tsx"],
+    "types": "types/**/*.ts",
+    "services": "execution/services/**/*.ts",
+    "agents": "execution/agents/**/*.ts",
+    "enforcePaths": true,
+    "pathPatterns": {
+      "apiRoutes": "^app/api/.*/route\\.ts$",
+      "components": "^(app/components|components)/.*\\.tsx$",
+      "types": "^types/.*\\.ts$",
+      "services": "^execution/services/.*\\.ts$",
+      "agents": "^execution/agents/.*\\.ts$"
+    }
+  },
+  "security": {
+    "forbiddenPatterns": [
+      {
+        "pattern": "process\\.env\\.(.*KEY|.*SECRET|.*PASSWORD|.*TOKEN)",
+        "type": "secret",
+        "message": "API keys or secrets should not be hardcoded. Use environment variables with proper access control.",
+        "exceptions": ["process.env.NODE_ENV", "process.env.PUBLIC_"]
+      },
+      {
+        "pattern": "eval\\s*\\(",
+        "type": "code-injection",
+        "message": "Use of eval() is forbidden due to security risks. Use safer alternatives.",
+        "exceptions": []
+      },
+      {
+        "pattern": "Function\\s*\\(",
+        "type": "code-injection",
+        "message": "Use of Function() constructor is forbidden due to security risks.",
+        "exceptions": []
+      },
+      {
+        "pattern": "dangerouslySetInnerHTML",
+        "type": "xss-risk",
+        "message": "dangerouslySetInnerHTML should only be used with proper sanitization.",
+        "exceptions": []
+      }
+    ]
+  },
+  "performance": {
+    "requiredCleanup": ["setInterval", "setTimeout", "addEventListener"],
+    "patterns": [
+      {
+        "pattern": "setInterval\\s*\\(",
+        "type": "memory-leak",
+        "message": "setInterval must be cleared with clearInterval() to prevent memory leaks",
+        "checkCleanup": true
+      },
+      {
+        "pattern": "setTimeout\\s*\\(",
+        "type": "memory-leak",
+        "message": "setTimeout should be cleared if component unmounts",
+        "checkCleanup": true
+      },
+      {
+        "pattern": "addEventListener\\s*\\(",
+        "type": "memory-leak",
+        "message": "Event listeners must be removed with removeEventListener() to prevent memory leaks",
+        "checkCleanup": true
+      }
+    ]
+  },
+  "stateTransitions": {
+    "PLAN": ["IMPLEMENT"],
+    "IMPLEMENT": ["VERIFY", "FAIL"],
+    "VERIFY": ["DONE", "PLAN", "FAIL"],
+    "DONE": ["PLAN"],
+    "FAIL": ["PLAN"]
+  },
+  "pricing": {
+    "gemini3Flash": {
+      "input": 0.50,
+      "output": 3.00,
+      "unit": "per_1M_tokens"
+    }
+  }
+}

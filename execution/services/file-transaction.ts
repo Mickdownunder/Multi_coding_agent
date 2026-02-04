@@ -1,5 +1,6 @@
 import { writeFile, readFile, unlink } from 'fs/promises'
 import { join } from 'path'
+import { FileValidator, PolicyViolationError } from './file-validator'
 
 export interface FileOperation {
   type: 'create' | 'modify' | 'delete'
@@ -11,6 +12,11 @@ export interface FileOperation {
 export class FileTransaction {
   private operations: FileOperation[] = []
   private backups: Map<string, string> = new Map()
+  private validator: FileValidator
+
+  constructor() {
+    this.validator = new FileValidator()
+  }
 
   async addOperation(operation: FileOperation): Promise<void> {
     // Create backup before modification
@@ -46,6 +52,17 @@ export class FileTransaction {
           if (!operation.content) {
             throw new Error(`No content provided for ${operation.type} operation on ${operation.path}`)
           }
+          
+          // HARD ENFORCEMENT: Validate against rules before writing
+          const rulesValidation = await this.validator.validateAgainstRules(operation.path, operation.content)
+          if (!rulesValidation.valid) {
+            await this.rollback()
+            throw new PolicyViolationError(
+              `Policy violation: Cannot ${operation.type} file ${operation.path}`,
+              rulesValidation.errors
+            )
+          }
+          
           // Ensure directory exists before writing file
           const dir = dirname(operation.path)
           await mkdir(dir, { recursive: true })

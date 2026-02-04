@@ -9,6 +9,12 @@ function GitRemoteManager() {
   const [branch, setBranch] = useState('main')
   const [pushing, setPushing] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [showCreateRepo, setShowCreateRepo] = useState(false)
+  const [repoName, setRepoName] = useState('control-system')
+  const [repoDescription, setRepoDescription] = useState('Control System - Autonomous Coding Agent')
+  const [isPrivate, setIsPrivate] = useState(false)
+  const [githubToken, setGithubToken] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const fetchRemotes = async () => {
     try {
@@ -88,9 +94,175 @@ function GitRemoteManager() {
     return <div style={{ fontSize: '11px', color: '#888' }}>Lade Remotes...</div>
   }
 
+  const handleCreateRepo = async () => {
+    if (!repoName || !githubToken) {
+      alert('Bitte Repository-Name und GitHub Token eingeben')
+      return
+    }
+    setCreating(true)
+    try {
+      const res = await fetch('/api/git/create-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoName,
+          description: repoDescription,
+          isPrivate,
+          githubToken
+        })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        alert(`✅ GitHub Repo '${repoName}' erstellt!\n\nURL: ${data.repository.url}\n\nJetzt kannst du pushen!`)
+        setGithubToken('') // Clear token for security
+        setShowCreateRepo(false)
+        fetchRemotes()
+        // Auto-set remote URL
+        if (data.remote) {
+          setRemoteUrl(data.remote.url)
+        }
+      } else {
+        alert(`Fehler: ${data.error}\n\n${data.details || ''}`)
+      }
+    } catch (error) {
+      alert('Fehler beim Erstellen des Repos')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   return (
     <div style={{ marginTop: '12px', fontSize: '11px' }}>
       <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#5c9aff' }}>📤 Remote & Push:</div>
+      
+      {!showCreateRepo && remotes.length === 0 && (
+        <button
+          onClick={() => setShowCreateRepo(true)}
+          style={{
+            width: '100%',
+            padding: '6px 12px',
+            background: '#7ec87e',
+            color: '#1a1a1a',
+            border: 'none',
+            borderRadius: '4px',
+            fontSize: '10px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            marginBottom: '8px'
+          }}
+        >
+          🚀 GitHub Repo erstellen
+        </button>
+      )}
+
+      {showCreateRepo && (
+        <div style={{ 
+          background: '#2a2a2a', 
+          padding: '12px', 
+          borderRadius: '4px', 
+          marginBottom: '8px' 
+        }}>
+          <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#5c9aff' }}>
+            GitHub Repo erstellen:
+          </div>
+          <input
+            type="text"
+            placeholder="Repository Name (z.B. control-system)"
+            value={repoName}
+            onChange={(e) => setRepoName(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '4px 8px',
+              background: '#1a1a1a',
+              color: '#e0e0e0',
+              border: '1px solid #444',
+              borderRadius: '4px',
+              fontSize: '10px',
+              marginBottom: '6px'
+            }}
+          />
+          <input
+            type="text"
+            placeholder="Beschreibung (optional)"
+            value={repoDescription}
+            onChange={(e) => setRepoDescription(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '4px 8px',
+              background: '#1a1a1a',
+              color: '#e0e0e0',
+              border: '1px solid #444',
+              borderRadius: '4px',
+              fontSize: '10px',
+              marginBottom: '6px'
+            }}
+          />
+          <input
+            type="password"
+            placeholder="GitHub Personal Access Token (mit 'repo' scope)"
+            value={githubToken}
+            onChange={(e) => setGithubToken(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '4px 8px',
+              background: '#1a1a1a',
+              color: '#e0e0e0',
+              border: '1px solid #444',
+              borderRadius: '4px',
+              fontSize: '10px',
+              marginBottom: '6px'
+            }}
+          />
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px', fontSize: '10px', color: '#aaa' }}>
+            <input
+              type="checkbox"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+            />
+            Privates Repository
+          </label>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              onClick={handleCreateRepo}
+              disabled={creating || !repoName || !githubToken}
+              style={{
+                flex: 1,
+                padding: '6px 12px',
+                background: (creating || !repoName || !githubToken) ? '#444' : '#7ec87e',
+                color: '#1a1a1a',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '10px',
+                fontWeight: 'bold',
+                cursor: (creating || !repoName || !githubToken) ? 'not-allowed' : 'pointer',
+                opacity: (creating || !repoName || !githubToken) ? 0.6 : 1
+              }}
+            >
+              {creating ? 'Erstelle...' : '✅ Repo erstellen'}
+            </button>
+            <button
+              onClick={() => {
+                setShowCreateRepo(false)
+                setGithubToken('')
+              }}
+              style={{
+                padding: '6px 12px',
+                background: '#444',
+                color: '#e0e0e0',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '10px',
+                cursor: 'pointer'
+              }}
+            >
+              Abbrechen
+            </button>
+          </div>
+          <div style={{ fontSize: '9px', color: '#888', marginTop: '6px' }}>
+            💡 Token erstellen: <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" style={{ color: '#5c9aff' }}>github.com/settings/tokens</a> (Scope: "repo")
+          </div>
+        </div>
+      )}
       
       {remotes.length > 0 && (
         <div style={{ marginBottom: '8px', color: '#aaa' }}>

@@ -5,6 +5,17 @@ import { ConfigService } from './config-service'
 const CONTROL_DIR = join(process.cwd(), 'control')
 const BUDGET_FILE = join(CONTROL_DIR, 'token-budget.json')
 
+export class BudgetExceededError extends Error {
+  constructor(
+    message: string,
+    public tokensUsed: number,
+    public maxTokens: number
+  ) {
+    super(message)
+    this.name = 'BudgetExceededError'
+  }
+}
+
 export interface TokenEstimate {
   estimatedTokens: number
   estimatedCost: number
@@ -111,11 +122,10 @@ export class TokenBudgetService {
     
     const estimatedTokens = planTokens + codeTokens + chatTokens
     
-    // Cost estimation (GPT-4: $0.03/1K input, $0.06/1K output)
-    // GPT-3.5: $0.0015/1K input, $0.002/1K output
+    // Cost estimation using Gemini 3 Flash pricing: $0.50/1M input, $3.00/1M output
     // Rough estimate: 70% input, 30% output
-    const planCost = (planTokens * 0.7 * 0.03 + planTokens * 0.3 * 0.06) / 1000
-    const codeCost = (codeTokens * 0.7 * 0.0015 + codeTokens * 0.3 * 0.002) / 1000
+    const planCost = (planTokens * 0.7 / 1_000_000) * 0.50 + (planTokens * 0.3 / 1_000_000) * 3.00
+    const codeCost = (codeTokens * 0.7 / 1_000_000) * 0.50 + (codeTokens * 0.3 / 1_000_000) * 3.00
     
     return {
       estimatedTokens,
@@ -135,19 +145,29 @@ export class TokenBudgetService {
     state.tokensUsed += tokens
     state.tokensByCategory[category] += tokens
     
-    // Calculate cost
+    // Calculate cost using Gemini 3 Flash pricing
     const config = this.configService.getLLMConfig()
-    let costPerToken = 0
+    const model = config.model[category] || config.model.code
     
-    if (category === 'plan' || category === 'chat') {
-      // GPT-4 pricing
-      costPerToken = (0.03 / 1000) * 0.7 + (0.06 / 1000) * 0.3 // 70% input, 30% output
-    } else {
-      // GPT-3.5 pricing
-      costPerToken = (0.0015 / 1000) * 0.7 + (0.002 / 1000) * 0.3
+    // Gemini 3 Flash pricing: $0.50 per 1M input, $3.00 per 1M output
+    let inputPricePer1M = 0.50
+    let outputPricePer1M = 3.00
+    
+    // Fallback for other models (legacy pricing)
+    if (model.includes('gpt-4') && !model.includes('gemini')) {
+      inputPricePer1M = 30.00  // $0.03 per 1K = $30 per 1M
+      outputPricePer1M = 60.00  // $0.06 per 1K = $60 per 1M
+    } else if ((model.includes('gpt-3.5') || model.includes('gpt-4o-mini')) && !model.includes('gemini')) {
+      inputPricePer1M = 1.50  // $0.0015 per 1K = $1.50 per 1M
+      outputPricePer1M = 2.00  // $0.002 per 1K = $2.00 per 1M
     }
     
-    state.costByCategory[category] += tokens * costPerToken
+    // Calculate cost: 70% input, 30% output
+    const inputTokens = tokens * 0.7
+    const outputTokens = tokens * 0.3
+    const cost = (inputTokens / 1_000_000) * inputPricePer1M + (outputTokens / 1_000_000) * outputPricePer1M
+    
+    state.costByCategory[category] += cost
     
     this.budgetState = state
     await this.saveBudgetState()
@@ -159,6 +179,24 @@ export class TokenBudgetService {
     const config = this.configService.getTokenBudgetConfig()
     
     return state.tokensUsed < config.maxPerProject
+  }
+
+  /**
+   * HARD ENFORCEMENT: Enforce budget by throwing exception if exceeded
+   * This ensures LLM calls cannot proceed if budget is exceeded
+   */
+  async enforceBudget(): Promise<void> {
+    await this.ensureConfigLoaded()
+    const state = await this.loadBudgetState()
+    const config = this.configService.getTokenBudgetConfig()
+    
+    if (state.tokensUsed >= config.maxPerProject) {
+      throw new BudgetExceededError(
+        `Token budget exceeded: ${state.tokensUsed} / ${config.maxPerProject} tokens used`,
+        state.tokensUsed,
+        config.maxPerProject
+      )
+    }
   }
 
   async getRemainingBudget(): Promise<number> {

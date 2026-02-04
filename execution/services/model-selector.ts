@@ -65,23 +65,33 @@ export class ModelSelector {
       model = config.model.code
     }
 
-    // Pricing (per 1K tokens)
-    let inputPrice = 0.03
-    let outputPrice = 0.06
+    // Pricing (per 1M tokens) - Updated for Gemini 3 Flash
+    let inputPricePer1M = 0.50  // $0.50 per 1M input tokens
+    let outputPricePer1M = 3.00  // $3.00 per 1M output tokens
 
-    if (model.includes('gpt-3.5') || model.includes('gpt-4o-mini') || model.includes('gemini-pro')) {
-      inputPrice = 0.0015
-      outputPrice = 0.002
+    if (model.includes('gemini-3-flash') || model.includes('gemini-3')) {
+      // Gemini 3 Flash pricing: $0.50/1M input, $3.00/1M output
+      inputPricePer1M = 0.50
+      outputPricePer1M = 3.00
+    } else if (model.includes('gpt-3.5') || model.includes('gpt-4o-mini') || model.includes('gemini-pro')) {
+      // Legacy pricing for other models (per 1K tokens, converted to per 1M)
+      inputPricePer1M = 1.50  // $0.0015 per 1K = $1.50 per 1M
+      outputPricePer1M = 2.00  // $0.002 per 1K = $2.00 per 1M
     } else if (model.includes('gpt-4')) {
-      inputPrice = 0.03
-      outputPrice = 0.06
+      // GPT-4 pricing (per 1K tokens, converted to per 1M)
+      inputPricePer1M = 30.00  // $0.03 per 1K = $30.00 per 1M
+      outputPricePer1M = 60.00  // $0.06 per 1K = $60.00 per 1M
     }
 
     // Estimate: 70% input, 30% output
     const inputTokens = tokens * 0.7
     const outputTokens = tokens * 0.3
 
-    return (inputTokens / 1000) * inputPrice + (outputTokens / 1000) * outputPrice
+    // Calculate cost (tokens in millions)
+    const inputCost = (inputTokens / 1_000_000) * inputPricePer1M
+    const outputCost = (outputTokens / 1_000_000) * outputPricePer1M
+
+    return inputCost + outputCost
   }
 
   shouldUseFallback(task: Task, budgetRemaining: number, estimatedCost: number): boolean {

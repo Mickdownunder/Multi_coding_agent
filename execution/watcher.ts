@@ -6,6 +6,33 @@ import { ExecutionLockManager } from './lock'
 const CONTROL_DIR = join(process.cwd(), 'control')
 const STATE_FILE = join(CONTROL_DIR, 'state.txt')
 
+// HARD ENFORCEMENT: Explicit state transition map (The Law)
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  PLAN: ['IMPLEMENT'],
+  IMPLEMENT: ['VERIFY', 'FAIL'],
+  VERIFY: ['DONE', 'PLAN', 'FAIL'],
+  DONE: ['PLAN'],
+  FAIL: ['PLAN']
+}
+
+// Helper to check if transition is allowed
+function isTransitionAllowed(from: string, to: string): boolean {
+  const allowed = ALLOWED_TRANSITIONS[from] || []
+  return allowed.includes(to)
+}
+
+export class StateTransitionError extends Error {
+  constructor(
+    message: string,
+    public fromState: string,
+    public toState: string,
+    public allowedTransitions: string[]
+  ) {
+    super(message)
+    this.name = 'StateTransitionError'
+  }
+}
+
 export class StateWatcher {
   private lockManager: ExecutionLockManager
   private lastState: State | null = null
@@ -28,6 +55,19 @@ export class StateWatcher {
   }
 
   async writeState(state: State): Promise<void> {
+    // HARD ENFORCEMENT: Check transition before writing
+    const currentState = this.lastState || await this.readState().catch(() => 'PLAN' as State)
+    
+    if (currentState && !isTransitionAllowed(currentState, state)) {
+      const allowedTransitions = ALLOWED_TRANSITIONS[currentState] || []
+      throw new StateTransitionError(
+        `FORBIDDEN: Invalid transition from ${currentState} to ${state}`,
+        currentState,
+        state,
+        allowedTransitions
+      )
+    }
+
     // Acquire lock before writing
     const acquired = await this.lockManager.acquireLock()
     if (!acquired) {

@@ -180,6 +180,43 @@ export class ImplementAgent extends Agent {
             // Update plan.md
             await this.updatePlanStep(step.id, true)
           } catch (error) {
+            if (error instanceof Error && error.name === 'PolicyViolationError') {
+              const policyError = error as any
+              await this.log(`POLICY VIOLATION in step ${step.id}: ${error.message}`)
+              
+              if (policyError.filePath) {
+                await this.log(`  File: ${policyError.filePath}`)
+              }
+              
+              if (policyError.violationType) {
+                await this.log(`  Violation Type: ${policyError.violationType}`)
+              }
+              
+              if ('violations' in policyError && Array.isArray(policyError.violations)) {
+                await this.log(`  Violations:`)
+                for (const violation of policyError.violations) {
+                  await this.log(`    - ${violation}`)
+                }
+              }
+              
+              if (policyError.suggestedFix) {
+                await this.log(`  Suggested Fix: ${policyError.suggestedFix}`)
+              }
+              
+              // Create structured error message for LLM context
+              const structuredError = {
+                type: 'PolicyViolationError',
+                stepId: step.id,
+                filePath: policyError.filePath,
+                violationType: policyError.violationType,
+                violations: policyError.violations || [],
+                suggestedFix: policyError.suggestedFix
+              }
+              
+              await this.log(`  Structured Error: ${JSON.stringify(structuredError, null, 2)}`)
+              
+              throw new Error(`Policy violation: Cannot proceed with step ${step.id}. File operations blocked by hard enforcement rules. Fix: ${policyError.suggestedFix || 'Review policy violations'}`)
+            }
             await this.log(`Error executing step ${step.id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
             throw error
           }

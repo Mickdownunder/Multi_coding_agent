@@ -27,13 +27,19 @@ export async function GET() {
   }
 }
 
-// Valid state transitions
-const VALID_TRANSITIONS: Record<string, string[]> = {
+// HARD ENFORCEMENT: Explicit state transition map (The Law)
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   PLAN: ['IMPLEMENT'],
   IMPLEMENT: ['VERIFY', 'FAIL'],
   VERIFY: ['DONE', 'PLAN', 'FAIL'],
   DONE: ['PLAN'],
   FAIL: ['PLAN']
+}
+
+// Helper to check if transition is allowed
+function isTransitionAllowed(from: string, to: string): boolean {
+  const allowed = ALLOWED_TRANSITIONS[from] || []
+  return allowed.includes(to)
 }
 
 // POST /api/state - Write new state
@@ -51,13 +57,30 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Validate state transition if currentState is provided
-    if (currentState && typeof currentState === 'string' && validStates.includes(currentState)) {
-      const allowedTransitions = VALID_TRANSITIONS[currentState] || []
-      if (!allowedTransitions.includes(state)) {
+    // HARD ENFORCEMENT: Read current state from file if not provided
+    let actualCurrentState = currentState
+    if (!actualCurrentState) {
+      try {
+        const currentContent = await readFile(STATE_FILE, 'utf-8')
+        actualCurrentState = currentContent.trim()
+      } catch {
+        // File doesn't exist, assume PLAN
+        actualCurrentState = 'PLAN'
+      }
+    }
+
+    // HARD ENFORCEMENT: Check transition against ALLOWED_TRANSITIONS map
+    if (actualCurrentState && validStates.includes(actualCurrentState)) {
+      if (!isTransitionAllowed(actualCurrentState, state)) {
+        const allowedTransitions = ALLOWED_TRANSITIONS[actualCurrentState] || []
         return NextResponse.json(
-          { error: `Invalid transition from ${currentState} to ${state}. Allowed transitions: ${allowedTransitions.join(', ') || 'none'}` },
-          { status: 400 }
+          { 
+            error: `FORBIDDEN: Invalid transition from ${actualCurrentState} to ${state}`,
+            allowedTransitions: allowedTransitions.length > 0 ? allowedTransitions : ['none'],
+            currentState: actualCurrentState,
+            requestedState: state
+          },
+          { status: 403 } // 403 Forbidden - policy violation
         )
       }
     }

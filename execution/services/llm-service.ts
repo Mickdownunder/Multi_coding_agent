@@ -1,5 +1,5 @@
 import { ConfigService } from './config-service'
-import { TokenBudgetService } from './token-budget-service'
+import { TokenBudgetService, BudgetExceededError } from './token-budget-service'
 import { ModelSelector, Task } from './model-selector'
 
 interface LLMResponse {
@@ -41,6 +41,9 @@ export class LLMService {
   }> {
     // Ensure config is loaded
     await this.configService.loadConfig()
+    
+    // HARD ENFORCEMENT: Check budget before LLM call
+    await this.tokenBudget.enforceBudget()
     
     const task: Task = {
       type: 'plan',
@@ -97,11 +100,8 @@ export class LLMService {
       description: request.step.description
     }
 
-    // Check budget
-    const budgetRemaining = await this.tokenBudget.getRemainingBudget()
-    if (budgetRemaining < 1000) {
-      throw new Error('Token budget exceeded')
-    }
+    // HARD ENFORCEMENT: Check budget before LLM call
+    await this.tokenBudget.enforceBudget()
 
     const model = await this.modelSelector.selectModel(task)
     const prompt = this.buildCodePrompt(request)
@@ -134,6 +134,9 @@ export class LLMService {
   }> {
     // Ensure config is loaded
     await this.configService.loadConfig()
+    
+    // HARD ENFORCEMENT: Check budget before LLM call
+    await this.tokenBudget.enforceBudget()
     
     const task: Task = {
       type: 'chat',

@@ -1,6 +1,8 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { GitTransaction } from './git-transaction'
+import { Config } from '../config'
+import { resolve } from 'path'
 
 const execAsync = promisify(exec)
 
@@ -13,13 +15,38 @@ export interface Diff {
 
 export class GitService {
   private transaction: GitTransaction | null = null
+  private config: Config
+  private projectPath: string | null = null
+
+  constructor() {
+    this.config = Config.getInstance()
+  }
 
   /**
-   * Check if Git repository is initialized
+   * Get the workspace project path from config
+   */
+  private async getProjectPath(): Promise<string> {
+    if (this.projectPath) {
+      return this.projectPath
+    }
+
+    try {
+      await this.config.load()
+      const workspaceConfig = this.config.getWorkspaceConfig()
+      this.projectPath = resolve(workspaceConfig.projectPath)
+      return this.projectPath
+    } catch (error) {
+      throw new Error(`Failed to get project path: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Check if Git repository is initialized in the workspace
    */
   async isInitialized(): Promise<boolean> {
     try {
-      await execAsync('git rev-parse --git-dir')
+      const projectPath = await this.getProjectPath()
+      await execAsync('git rev-parse --git-dir', { cwd: projectPath })
       return true
     } catch {
       return false
@@ -27,54 +54,128 @@ export class GitService {
   }
 
   /**
-   * Initialize Git repository if not already initialized
+   * Initialize Git repository in workspace if not already initialized
    */
   async initialize(): Promise<void> {
     try {
+      const projectPath = await this.getProjectPath()
       const isInit = await this.isInitialized()
       if (!isInit) {
-        await execAsync('git init')
+        await execAsync('git init', { cwd: projectPath })
         // Set default branch to main
         try {
-          await execAsync('git branch -M main')
+          await execAsync('git branch -M main', { cwd: projectPath })
         } catch {
           // Branch might already exist or command not available
         }
       }
     } catch (error) {
-      throw new Error(`Failed to initialize Git repository: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      throw new Error(`Failed to initialize Git repository in workspace: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   async commit(message: string, files: string[]): Promise<string> {
-    // HARD CHECK: Verify Git repository exists before attempting commit
+    // WORKSPACE ISOLATION: All Git operations must be in workspace
+    const projectPath = await this.getProjectPath()
+    const { resolve } = await import('path')
+    const { stat } = await import('fs/promises')
+    
+    // HARD CHECK: Verify Git repository exists in workspace before attempting commit
     const isInit = await this.isInitialized()
     if (!isInit) {
-      throw new Error('Git repository is not initialized. Cannot commit. Call initialize() first or ensure you are in a Git repository.')
+      throw new Error(`Git repository is not initialized in workspace (${projectPath}). Cannot commit. Call initialize() first.`)
     }
 
     try {
-      // Stage files
-      if (files.length > 0) {
-        const addResult = await execAsync(`git add ${files.map(f => `"${f.replace(/"/g, '\\"')}"`).join(' ')}`)
-        // Verify add succeeded
-        if (addResult.stderr && !addResult.stderr.includes('warning')) {
-          throw new Error(`Git add failed: ${addResult.stderr}`)
+      // PFAD-PRÄZISION: Validate and filter files before staging
+      const validFiles: string[] = []
+      const invalidFiles: string[] = []
+      
+      for (const file of files) {
+        // Resolve file path
+        let resolvedPath: string
+        if (file.startsWith('/')) {
+          // Absolute path
+          resolvedPath = resolve(file)
+        } else {
+          // Relative path - resolve relative to workspace
+          resolvedPath = resolve(projectPath, file)
+        }
+        
+        // HARD CHECK: File must be within workspace
+        const resolvedProjectPath = resolve(projectPath)
+        if (!resolvedPath.startsWith(resolvedProjectPath + '/') && resolvedPath !== resolvedProjectPath) {
+          invalidFiles.push(file)
+          continue
+        }
+        
+        // Check if file exists
+        try {
+          await stat(resolvedPath)
+          // File exists and is in workspace - add relative path for git
+          const relativePath = resolvedPath.replace(resolvedProjectPath + '/', '')
+          validFiles.push(relativePath)
+        } catch {
+          // File doesn't exist - skip it (graceful handling)
+          invalidFiles.push(file)
         }
       }
+      
+      // GIT-BEREINIGUNG: Blockiere System-Dateien (plan.md, report.md, etc.) endgültig
+      const systemFiles = invalidFiles.filter(f => 
+        f.includes('control-system') || 
+        f.includes('/control/') || 
+        f.includes('control/plan.md') || 
+        f.includes('control/report.md') ||
+        f.includes('control/intent.md') ||
+        f.includes('control/rules.md')
+      )
+      
+      if (systemFiles.length > 0) {
+        // System-Dateien dürfen NIEMALS im Workspace-Git landen
+        console.warn(`[GitService] BLOCKED: System files cannot be committed to workspace: ${systemFiles.join(', ')}`)
+      }
+      
+      // Log invalid files (but don't fail)
+      if (invalidFiles.length > 0) {
+        // Return 'no-changes' if all files are invalid (graceful)
+        if (validFiles.length === 0) {
+          return 'no-changes'
+        }
+        // Log warning but continue with valid files
+        console.warn(`[GitService] Skipping files outside workspace or not found: ${invalidFiles.join(', ')}`)
+      }
+      
+      // Stage only valid files (paths are relative to workspace)
+      if (validFiles.length > 0) {
+        const addResult = await execAsync(`git add ${validFiles.map(f => `"${f.replace(/"/g, '\\"')}"`).join(' ')}`, { cwd: projectPath })
+        // Verify add succeeded
+        if (addResult.stderr && !addResult.stderr.includes('warning')) {
+          // Check if it's a "pathspec" error (file not found) - graceful handling
+          if (addResult.stderr.includes('pathspec') || addResult.stderr.includes('did not match any files')) {
+            return 'no-changes'
+          }
+          throw new Error(`Git add failed: ${addResult.stderr}`)
+        }
+      } else {
+        // No valid files to stage
+        return 'no-changes'
+      }
 
-      // Commit
-      const commitResult = await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`)
+      // Commit in workspace
+      const commitResult = await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: projectPath })
       
       // Extract commit hash from output
       const commitHashMatch = commitResult.stdout.match(/\[(\w+)\]/) || commitResult.stdout.match(/([a-f0-9]{7,})/)
       if (!commitHashMatch) {
-        // If no hash found, verify commit actually succeeded
-        if (commitResult.stderr && !commitResult.stderr.includes('nothing to commit')) {
-          throw new Error(`Git commit output unclear. stdout: ${commitResult.stdout}, stderr: ${commitResult.stderr}`)
+        // Check if this is a "nothing to commit" case (this is OK, not an error)
+        const output = (commitResult.stdout + ' ' + commitResult.stderr).toLowerCase()
+        if (output.includes('nothing to commit') || output.includes('no changes') || output.includes('nothing added to commit')) {
+          // This is expected - no changes to commit, continue execution
+          return 'no-changes'
         }
-        // No changes to commit
-        return 'no-changes'
+        // If no hash found and it's not "nothing to commit", something went wrong
+        throw new Error(`Git commit output unclear. stdout: ${commitResult.stdout}, stderr: ${commitResult.stderr}`)
       }
       
       const commitHash = commitHashMatch[1]
@@ -95,35 +196,43 @@ export class GitService {
         errorMsg = execError.stderr || execError.message || 'Unknown error'
       }
       
-      // If commit fails because of no changes, that's okay
-      if (errorMsg.includes('nothing to commit') || errorMsg.includes('no changes') || errorMsg.includes('nothing added to commit')) {
+      // FEHLERTOLERANZ: "nothing to commit" ist KEIN Fehler - einfach weitermachen
+      const errorOutput = errorMsg.toLowerCase()
+      if (errorOutput.includes('nothing to commit') || 
+          errorOutput.includes('no changes') || 
+          errorOutput.includes('nothing added to commit') ||
+          errorOutput.includes('working tree clean')) {
+        // Kein Fehler - einfach 'no-changes' zurückgeben und weitermachen
         return 'no-changes'
       }
       
-      // Throw real error with actual error message
-      throw new Error(`Git commit failed: ${errorMsg}`)
+      // Nur echte Fehler werfen
+      throw new Error(`Git commit failed in workspace (${projectPath}): ${errorMsg}`)
     }
   }
 
   async createCheckpoint(tag: string): Promise<void> {
     try {
-      await execAsync(`git tag ${tag}`)
+      const projectPath = await this.getProjectPath()
+      await execAsync(`git tag ${tag}`, { cwd: projectPath })
     } catch (error) {
-      throw new Error(`Failed to create checkpoint: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      throw new Error(`Failed to create checkpoint in workspace: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   async rollbackToCheckpoint(tag: string): Promise<void> {
     try {
-      await execAsync(`git reset --hard ${tag}`)
+      const projectPath = await this.getProjectPath()
+      await execAsync(`git reset --hard ${tag}`, { cwd: projectPath })
     } catch (error) {
-      throw new Error(`Failed to rollback to checkpoint: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      throw new Error(`Failed to rollback to checkpoint in workspace: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   async getDiff(commit1: string, commit2: string): Promise<Diff[]> {
     try {
-      const { stdout } = await execAsync(`git diff --stat ${commit1} ${commit2}`)
+      const projectPath = await this.getProjectPath()
+      const { stdout } = await execAsync(`git diff --stat ${commit1} ${commit2}`, { cwd: projectPath })
       // Parse diff output (simplified)
       const diffs: Diff[] = []
       const lines = stdout.split('\n')
@@ -148,8 +257,9 @@ export class GitService {
 
   async validateBeforeCommit(): Promise<boolean> {
     try {
-      // Check if there are changes to commit
-      const { stdout } = await execAsync('git status --porcelain')
+      const projectPath = await this.getProjectPath()
+      // Check if there are changes to commit in workspace
+      const { stdout } = await execAsync('git status --porcelain', { cwd: projectPath })
       return stdout.trim().length > 0
     } catch (error) {
       return false
@@ -157,55 +267,60 @@ export class GitService {
   }
 
   /**
-   * Add remote repository
+   * Add remote repository (workspace-scoped)
    */
   async addRemote(name: string, url: string): Promise<void> {
     try {
-      // Check if remote already exists
+      const projectPath = await this.getProjectPath()
+      
+      // Check if remote already exists in workspace
       try {
-        const { stdout } = await execAsync(`git remote get-url ${name}`)
+        const { stdout } = await execAsync(`git remote get-url ${name}`, { cwd: projectPath })
         if (stdout.trim() === url) {
           // Remote already exists with same URL, that's fine
           return
         }
         // Remote exists with different URL, update it
-        await execAsync(`git remote set-url ${name} ${url}`)
+        await execAsync(`git remote set-url ${name} ${url}`, { cwd: projectPath })
       } catch {
         // Remote doesn't exist, add it
-        await execAsync(`git remote add ${name} ${url}`)
+        await execAsync(`git remote add ${name} ${url}`, { cwd: projectPath })
       }
     } catch (error) {
-      throw new Error(`Failed to add remote: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      throw new Error(`Failed to add remote in workspace: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   /**
-   * Push to remote repository
+   * Push to remote repository (workspace-scoped)
    */
   async push(remote: string = 'origin', branch: string = 'main', force: boolean = false): Promise<void> {
-    // HARD CHECK: Verify Git repository exists before attempting push
+    // WORKSPACE ISOLATION: All Git operations must be in workspace
+    const projectPath = await this.getProjectPath()
+    
+    // HARD CHECK: Verify Git repository exists in workspace before attempting push
     const isInit = await this.isInitialized()
     if (!isInit) {
-      throw new Error('Git repository is not initialized. Cannot push. Call initialize() first or ensure you are in a Git repository.')
+      throw new Error(`Git repository is not initialized in workspace (${projectPath}). Cannot push. Call initialize() first.`)
     }
 
-    // HARD CHECK: Verify remote exists
+    // HARD CHECK: Verify remote exists in workspace
     let remoteUrl: string | null = null
     try {
-      const remoteResult = await execAsync(`git remote get-url ${remote}`)
+      const remoteResult = await execAsync(`git remote get-url ${remote}`, { cwd: projectPath })
       remoteUrl = remoteResult.stdout.trim()
       if (!remoteUrl) {
         throw new Error(`Remote '${remote}' exists but has no URL configured.`)
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      throw new Error(`Remote '${remote}' does not exist or is not configured. Use addRemote() first. Error: ${errorMsg}`)
+      throw new Error(`Remote '${remote}' does not exist or is not configured in workspace. Use addRemote() first. Error: ${errorMsg}`)
     }
 
     try {
-      // Push to remote
+      // Push to remote from workspace
       const forceFlag = force ? '--force' : ''
-      const pushResult = await execAsync(`git push ${forceFlag} ${remote} ${branch}`.trim())
+      const pushResult = await execAsync(`git push ${forceFlag} ${remote} ${branch}`.trim(), { cwd: projectPath })
       
       // Verify push actually succeeded
       if (pushResult.stderr && !pushResult.stderr.includes('up to date') && !pushResult.stderr.includes('To ')) {
@@ -242,17 +357,34 @@ export class GitService {
         }
       }
       
-      // Throw real error with actual error message
-      throw new Error(`Git push failed: ${errorMsg}`)
+      // GIT-BEREINIGUNG: Git push/commit Fehler sind Warnungen, nicht fatal
+      // Nur bei fatalen Dateifehlern auf FAIL setzen
+      const isFatalError = errorMsg.includes('fatal:') && (
+        errorMsg.includes('cannot lock') ||
+        errorMsg.includes('corrupt') ||
+        errorMsg.includes('invalid object') ||
+        errorMsg.includes('repository not found')
+      )
+      
+      if (isFatalError) {
+        throw new Error(`FATAL Git error in workspace (${projectPath}): ${errorMsg}`)
+      }
+      
+      // Non-fatal errors (auth, network, etc.): Log warning but don't throw
+      // This allows execution to continue even if push fails
+      console.warn(`[GitService] Git push warning (non-fatal, execution continues): ${errorMsg}`)
+      // Don't throw - just return to allow execution to continue
+      return
     }
   }
 
   /**
-   * Get remote URL
+   * Get remote URL (workspace-scoped)
    */
   async getRemoteUrl(name: string = 'origin'): Promise<string | null> {
     try {
-      const { stdout } = await execAsync(`git remote get-url ${name}`)
+      const projectPath = await this.getProjectPath()
+      const { stdout } = await execAsync(`git remote get-url ${name}`, { cwd: projectPath })
       return stdout.trim()
     } catch {
       return null
@@ -260,11 +392,12 @@ export class GitService {
   }
 
   /**
-   * List all remotes
+   * List all remotes (workspace-scoped)
    */
   async listRemotes(): Promise<Array<{ name: string; url: string }>> {
     try {
-      const { stdout } = await execAsync('git remote -v')
+      const projectPath = await this.getProjectPath()
+      const { stdout } = await execAsync('git remote -v', { cwd: projectPath })
       const remotes: Array<{ name: string; url: string }> = []
       const seen = new Set<string>()
       

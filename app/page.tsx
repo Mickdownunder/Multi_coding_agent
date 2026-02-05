@@ -172,7 +172,7 @@ export default function Page() {
           }}>Control Files</h3>
           <button
             onClick={async () => {
-              if (!confirm('Alle Dateien außer rules.md löschen?\n\n- Control-Dateien (intent.md, plan.md, report.md, state.txt)\n- Alle erstellten App-Dateien (app/app/, app/todo/, etc.)')) {
+              if (!confirm('Alle Dateien außer rules.md löschen?\n\n- Control-Dateien (intent.md, plan.md, report.md, state.txt)\n- Alle erstellten App-Dateien (apps/{app-name}/)')) {
                 return
               }
               setIsRefreshing(true)
@@ -224,7 +224,6 @@ export default function Page() {
               opacity: isRefreshing ? 0.7 : 1,
               cursor: isRefreshing ? 'not-allowed' : 'pointer'
             }}
-            disabled={isRefreshing}
           >
             {isRefreshing ? 'Clearing...' : 'Clear All'}
           </button>

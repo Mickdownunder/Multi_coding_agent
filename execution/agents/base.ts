@@ -78,6 +78,43 @@ export abstract class Agent {
     }
   }
 
+  /**
+   * HEARTBEAT: Wrapper für LLM-Calls mit Heartbeat-Logging
+   * Wenn ein Call länger als 15 Sekunden dauert, loggt alle 10 Sekunden einen Status
+   */
+  protected async callWithHeartbeat<T>(
+    callName: string,
+    llmCall: () => Promise<T>,
+    heartbeatInterval: number = 10000 // 10 Sekunden
+  ): Promise<T> {
+    const startTime = Date.now()
+    const heartbeatThreshold = 15000 // 15 Sekunden
+    
+    // Start heartbeat interval
+    const heartbeatTimer = setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000)
+      await this.log(`💓 HEARTBEAT: ${callName} läuft noch... (${elapsed}s)`)
+    }, heartbeatInterval)
+    
+    try {
+      const result = await llmCall()
+      const elapsed = Math.floor((Date.now() - startTime) / 1000)
+      
+      // Nur loggen wenn es länger als 15 Sekunden gedauert hat
+      if (elapsed >= heartbeatThreshold / 1000) {
+        await this.log(`✅ ${callName} abgeschlossen nach ${elapsed}s`)
+      }
+      
+      return result
+    } catch (error) {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000)
+      await this.log(`❌ ${callName} fehlgeschlagen nach ${elapsed}s: ${error instanceof Error ? error.message : String(error)}`)
+      throw error
+    } finally {
+      clearInterval(heartbeatTimer)
+    }
+  }
+
   private parsePendingQuestions(content: string): string[] {
     const lines = content.split('\n')
     const questions: string[] = []

@@ -53,20 +53,10 @@ export class VerifyAgent extends Agent {
     await writeFile(REPORT_FILE, report, 'utf-8')
     await this.log('Verification report written')
 
-    // Commit report
-    await this.gitService.commit('Verification report', [REPORT_FILE])
-    
-    // Auto-push to remote if configured
-    try {
-      const remoteUrl = await this.gitService.getRemoteUrl('origin')
-      if (remoteUrl) {
-        await this.gitService.push('origin', 'main', false)
-        await this.log('✅ Pushed verification report to origin/main')
-      }
-    } catch (error) {
-      // Push failed, but don't fail verification - just log it
-      await this.log(`⚠️ Auto-push failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
+    // GIT-ISOLATION: Control files (report.md) are NOT committed to workspace Git
+    // They are system files in control-system/, not agent work products
+    // Only generated app files in the workspace should be committed
+    await this.log('ℹ️ Verification report written to control/report.md (system file, not committed to workspace Git)')
 
     // Check if all verifications passed
     if (results.allPassed) {
@@ -104,6 +94,7 @@ export class VerifyAgent extends Agent {
     buildValid: boolean
     rulesCompliant: boolean
     successCriteria: boolean
+    traceabilityValid?: boolean
     errors: string[]
     warnings: string[]
   }): string {
@@ -119,7 +110,11 @@ export class VerifyAgent extends Agent {
     report += `- Types Valid: ${results.typesValid ? '✅' : '❌'}\n`
     report += `- Build Valid: ${results.buildValid ? '✅' : '❌'}\n`
     report += `- Rules Compliant: ${results.rulesCompliant ? '✅' : '❌'}\n`
-    report += `- Success Criteria: ${results.successCriteria ? '✅' : '❌'}\n\n`
+    report += `- Success Criteria: ${results.successCriteria ? '✅' : '❌'}\n`
+    if (results.traceabilityValid !== undefined) {
+      report += `- Traceability (REQ→Code): ${results.traceabilityValid ? '✅' : '❌'}\n`
+    }
+    report += `\n`
 
     if (results.errors.length > 0) {
       report += `## Errors\n\n`

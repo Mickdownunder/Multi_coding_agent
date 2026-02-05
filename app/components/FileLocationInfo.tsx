@@ -282,6 +282,8 @@ function GitRemoteManager() {
 export default function FileLocationInfo() {
   const [gitStatus, setGitStatus] = useState<{ initialized: boolean; path: string } | null>(null)
   const [projectPath, setProjectPath] = useState<string>('')
+  const [workspacePath, setWorkspacePath] = useState<string>('')
+  const [isWorkspaceExternal, setIsWorkspaceExternal] = useState(false)
 
   const fetchData = async () => {
     const checkGit = async () => {
@@ -300,6 +302,8 @@ export default function FileLocationInfo() {
         const data = await res.json()
         if (res.ok && data.path) {
           setProjectPath(data.path)
+          setWorkspacePath(data.workspacePath || data.path)
+          setIsWorkspaceExternal(data.isWorkspaceExternal ?? false)
         }
       } catch {
         setProjectPath(window.location.origin.replace('http://localhost:', '').replace('http://', ''))
@@ -360,7 +364,9 @@ export default function FileLocationInfo() {
       </h3>
       <div style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
         <p style={{ marginBottom: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>
-          Alle Dateien werden direkt in deinem Projektverzeichnis erstellt:
+          {isWorkspaceExternal
+            ? 'Agent-Dateien werden im Workspace erstellt (control/config.json):'
+            : 'Alle Dateien werden direkt in deinem Projektverzeichnis erstellt:'}
         </p>
         <div className="glass-surface" style={{ 
           padding: '12px', 
@@ -372,8 +378,13 @@ export default function FileLocationInfo() {
           color: 'var(--atomic-blue)',
           wordBreak: 'break-all'
         }}>
-          {projectPath || '$ Loading project path...'}
+          {(isWorkspaceExternal ? workspacePath : projectPath) || '$ Loading...'}
         </div>
+        {isWorkspaceExternal && (
+          <p style={{ marginBottom: '12px', fontSize: '10px', color: 'var(--text-muted)' }}>
+            Projekt (Dashboard): {projectPath}
+          </p>
+        )}
         <div className="glass-surface" style={{ 
           padding: '16px', 
           border: '1px solid var(--border-subtle)',

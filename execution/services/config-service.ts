@@ -37,6 +37,30 @@ export class ConfigService {
     }
   }
 
+  /** Returns provider-specific API key error message for UI/API responses */
+  getAPIKeyErrorMessage(): { error: string; details: string } {
+    try {
+      const config = this.getConfig()
+      const provider = config.llm.provider
+      const envVars: Record<string, string> = {
+        openai: 'OPENAI_API_KEY',
+        anthropic: 'ANTHROPIC_API_KEY',
+        gemini: 'GEMINI_API_KEY'
+      }
+      const envVar = envVars[provider] || 'LLM_API_KEY'
+      const example = provider === 'openai' ? 'sk-...' : provider === 'gemini' ? 'AIza...' : 'sk-ant-...'
+      return {
+        error: `API key validation failed. Please set ${envVar} environment variable or configure in control/config.json`,
+        details: `Run: export ${envVar}="${example}" or set "env:${envVar}" in control/config.json`
+      }
+    } catch {
+      return {
+        error: 'API key validation failed. Configure control/config.json or set the appropriate environment variable.',
+        details: 'See control/config.json for llm.provider and llm.apiKey (use env:VAR_NAME for env vars)'
+      }
+    }
+  }
+
   getConfig(): SystemConfig {
     return this.config.getConfig()
   }

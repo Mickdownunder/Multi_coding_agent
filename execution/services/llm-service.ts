@@ -24,6 +24,7 @@ export class LLMService {
   async generatePlan(request: {
     intent: string
     rules: string
+    requirements?: Array<{ id: string; description: string; priority?: string }>
     context?: unknown
   }): Promise<{
     plan: {
@@ -206,7 +207,8 @@ export class LLMService {
     // Call OpenAI API
     if (config.provider === 'openai') {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+      // LOOP-SCHUTZ: 90 Sekunden Timeout (statt 60)
+      const timeoutId = setTimeout(() => controller.abort(), 90000) // 90 second timeout
       
       try {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -255,7 +257,7 @@ export class LLMService {
       } catch (error) {
         clearTimeout(timeoutId)
         if (error instanceof Error && error.name === 'AbortError') {
-          throw new Error('OpenAI API request timed out after 60 seconds')
+          throw new Error('OpenAI API request timed out after 90 seconds')
         }
         throw error
       }
@@ -269,7 +271,8 @@ export class LLMService {
       }
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 second timeout
+      // LOOP-SCHUTZ: 90 Sekunden Timeout (statt 60)
+      const timeoutId = setTimeout(() => controller.abort(), 90000) // 90 second timeout
       
       try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`, {
@@ -318,7 +321,7 @@ export class LLMService {
       } catch (error) {
         clearTimeout(timeoutId)
         if (error instanceof Error && error.name === 'AbortError') {
-          throw new Error('Gemini API request timed out after 60 seconds')
+          throw new Error('Gemini API request timed out after 90 seconds')
         }
         throw error
       }
@@ -347,7 +350,10 @@ export class LLMService {
     })
   }
 
-  private buildPlanPrompt(request: { intent: string; rules: string; context?: unknown }): string {
+  private buildPlanPrompt(request: { intent: string; rules: string; requirements?: Array<{ id: string; description: string; priority?: string }>; context?: unknown }): string {
+    const requirementsBlock = request.requirements && request.requirements.length > 0
+      ? `\nStructured Requirements (map each step to requirement IDs):\n${request.requirements.map(r => `- ${r.id}: ${r.description}`).join('\n')}\n`
+      : ''
     return `You are a software planning assistant. Generate a detailed implementation plan based on the following intent and rules.
 
 Intent:
@@ -355,7 +361,7 @@ ${request.intent}
 
 Rules:
 ${request.rules}
-
+${requirementsBlock}
 ${request.context ? `Context:\n${JSON.stringify(request.context, null, 2)}` : ''}
 
 Generate a plan with the following JSON structure:
@@ -369,13 +375,16 @@ Generate a plan with the following JSON structure:
           "id": "step-1",
           "description": "Step description",
           "type": "create|modify|delete|verify",
-          "files": ["file1.ts", "file2.ts"]
+          "files": ["file1.ts", "file2.ts"],
+          "requirementIds": ["REQ-001"]
         }
       ],
       "dependencies": []
     }
   ]
 }
+
+${request.requirements?.length ? 'Map each step to the requirement IDs it implements. Include "requirementIds" array in each step.' : ''}
 
 STRICT JSON ONLY. Respond with ONLY valid JSON. No conversational text, no explanations, no markdown formatting outside the JSON structure. Your response must be parseable by JSON.parse() without any preprocessing.`
   }

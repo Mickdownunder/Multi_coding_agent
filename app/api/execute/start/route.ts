@@ -24,11 +24,9 @@ export async function POST(request: NextRequest) {
     const configService = new ConfigService()
     const hasValidKey = await configService.validateAPIKeys()
     if (!hasValidKey) {
+      const msg = configService.getAPIKeyErrorMessage()
       return NextResponse.json(
-        { 
-          error: 'API key validation failed. Please set OPENAI_API_KEY environment variable or configure in control/config.json',
-          details: 'Run: export OPENAI_API_KEY="sk-..." or set "env:OPENAI_API_KEY" in control/config.json'
-        },
+        { error: msg.error, details: msg.details },
         { status: 400 }
       )
     }
@@ -69,13 +67,11 @@ export async function POST(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     
     // Provide helpful error messages
-    if (errorMessage.includes('API key') || errorMessage.includes('OPENAI_API_KEY')) {
+    if (errorMessage.includes('API key') || errorMessage.includes('GEMINI_API_KEY') || errorMessage.includes('OPENAI_API_KEY') || errorMessage.includes('ANTHROPIC_API_KEY')) {
+      const configService = new ConfigService()
+      const msg = configService.getAPIKeyErrorMessage()
       return NextResponse.json(
-        { 
-          error: 'API key configuration error',
-          details: errorMessage,
-          fix: 'Set OPENAI_API_KEY environment variable: export OPENAI_API_KEY="sk-..."'
-        },
+        { error: msg.error, details: errorMessage, fix: msg.details },
         { status: 400 }
       )
     }

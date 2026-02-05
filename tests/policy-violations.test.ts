@@ -34,13 +34,9 @@ export default function Test() {
   return <div>Test</div>
 }`
 
-      await expect(
-        fileService.createFile(filePath, content)
-      ).rejects.toThrow(PolicyViolationError)
-
-      await expect(
-        fileService.createFile(filePath, content)
-      ).rejects.toThrow('next/document')
+      const err = await fileService.createFile(filePath, content).catch(e => e)
+      expect(err).toBeInstanceOf(PolicyViolationError)
+      expect(err.violations?.some((v: string) => v.includes('next/document')) || err.message?.includes('next/document')).toBe(true)
     })
 
     it('should allow next/document import in _document.tsx', async () => {

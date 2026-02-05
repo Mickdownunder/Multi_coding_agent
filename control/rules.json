@@ -57,6 +57,12 @@
         "exceptions": ["process.env.NODE_ENV", "process.env.PUBLIC_"]
       },
       {
+        "pattern": "(API_KEY|SECRET|PASSWORD|TOKEN)\\s*=\\s*['\"][^'\"]+['\"]",
+        "type": "secret",
+        "message": "Hardcoded API keys or secrets are forbidden. Use environment variables.",
+        "exceptions": []
+      },
+      {
         "pattern": "eval\\s*\\(",
         "type": "code-injection",
         "message": "Use of eval() is forbidden due to security risks. Use safer alternatives.",

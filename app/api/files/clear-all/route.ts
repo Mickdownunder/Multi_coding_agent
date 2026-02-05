@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readdir, stat, unlink, rmdir } from 'fs/promises'
-import { join } from 'path'
+import { readdir, unlink, rmdir } from 'fs/promises'
+import { join, resolve } from 'path'
+import { Config } from '../../../../execution/config'
 
-const PROJECT_ROOT = process.cwd()
-
-// Directories to scan for created files (relative to project root)
-// Now we just need to scan the apps/ directory
-const SCAN_DIRECTORIES = [
-  'apps' // All apps are now in apps/{app-name}/
-]
+// Directories to scan for created files - uses workspace path from config
+// Agent writes to workspace.projectPath/apps/, so we must scan there (not process.cwd())
+async function getScanDirectories(): Promise<string[]> {
+  const projectRoot = process.cwd()
+  try {
+    const config = Config.getInstance()
+    await config.load()
+    const workspacePath = resolve(config.getWorkspaceConfig().projectPath)
+    const projectRootResolved = resolve(projectRoot)
+    // If workspace is same as project root, use relative path
+    if (workspacePath === projectRootResolved) {
+      return [join(projectRoot, 'apps')]
+    }
+    // Workspace is external (e.g. agent-workspace) - scan workspace/apps
+    return [join(workspacePath, 'apps')]
+  } catch {
+    // Fallback: scan process.cwd()/apps if config fails
+    return [join(projectRoot, 'apps')]
+  }
+}
 
 // Files/directories to NEVER delete
 const PROTECTED_PATTERNS = [
@@ -98,17 +112,16 @@ export async function POST(request: NextRequest) {
     
     const deleted: string[] = []
     const errors: string[] = []
+    const scanDirs = await getScanDirectories()
     
-    // Scan directories for files to delete
-    for (const dir of SCAN_DIRECTORIES) {
-      const dirPath = join(PROJECT_ROOT, dir)
-      
+    // Scan directories for files to delete (workspace/apps or project/apps)
+    for (const dirPath of scanDirs) {
       try {
         const entries = await readdir(dirPath, { withFileTypes: true })
         
         for (const entry of entries) {
           const fullPath = join(dirPath, entry.name)
-          const relativePath = join(dir, entry.name)
+          const relativePath = `apps/${entry.name}`
           
           if (await shouldDelete(fullPath, relativePath)) {
             try {
@@ -129,7 +142,7 @@ export async function POST(request: NextRequest) {
         // Directory doesn't exist, that's OK
         const err = error as NodeJS.ErrnoException
         if (err.code !== 'ENOENT') {
-          errors.push(`${dir}: ${err.message}`)
+          errors.push(`${dirPath}: ${err.message}`)
         }
       }
     }

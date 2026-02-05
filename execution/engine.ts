@@ -2,6 +2,7 @@ import { StateWatcher } from './watcher'
 import { ExecutionQueue } from './queue'
 import { CheckpointService } from './services/checkpoint-service'
 import { ExecutionLockManager } from './lock'
+import { recordProvenance } from './services/provenance-service'
 import { State, Execution } from './types/agent'
 import { Agent } from './agents/base'
 
@@ -13,6 +14,7 @@ export class ExecutionEngine {
   private currentExecution: Execution | null = null
   private agents: Map<State, () => Agent> = new Map()
   private running = false
+  private lastKnownState: State | null = null
   private onExecutionStart?: (execution: Execution) => void
   private onExecutionComplete?: (execution: Execution) => void
   private onExecutionError?: (execution: Execution, error: Error) => void
@@ -50,6 +52,7 @@ export class ExecutionEngine {
     // Process current state immediately (don't wait for change)
     try {
       const currentState = await this.watcher.readState()
+      this.lastKnownState = currentState
       await this.logToFile(`[ExecutionEngine] Current state: ${currentState}`)
       // Only process if state is not an end state (DONE, FAIL)
       if (currentState && currentState !== 'DONE' && currentState !== 'FAIL') {
@@ -73,7 +76,52 @@ export class ExecutionEngine {
     await this.lockManager.releaseLock()
   }
 
+  /**
+   * FORCE-RESET: Clear all locks, flush queue, and reset execution state
+   * Used for manual recovery from FAIL state
+   */
+  async forceReset(): Promise<void> {
+    await this.logToFile('[ExecutionEngine] FORCE-RESET: Clearing locks, flushing queue, resetting execution')
+    
+    // Clear all locks
+    await this.lockManager.releaseLock()
+    
+    // Flush queue
+    this.queue.clear()
+    this.queue.setProcessing(false)
+    
+    // Reset current execution
+    this.currentExecution = null
+    
+    // Reset running flag
+    this.running = false
+    
+    await this.logToFile('[ExecutionEngine] FORCE-RESET: Complete')
+  }
+
   private async onStateChange(newState: State): Promise<void> {
+    // FORCE-RESET: If state changes from FAIL/DONE to PLAN/IMPLEMENT, reset everything
+    const previousState = this.lastKnownState
+    if ((previousState === 'FAIL' || previousState === 'DONE') && 
+        (newState === 'PLAN' || newState === 'IMPLEMENT' || newState === 'VERIFY')) {
+      await this.logToFile(`[ExecutionEngine] FORCE-RESET: State changed from ${previousState} to ${newState}, clearing locks and queue`)
+      
+      // Clear all locks
+      await this.lockManager.releaseLock()
+      
+      // Flush queue
+      this.queue.clear()
+      this.queue.setProcessing(false)
+      
+      // Reset current execution
+      this.currentExecution = null
+      
+      // Resume execution
+      this.running = true
+    }
+    
+    this.lastKnownState = newState
+    
     // FAIL and DONE are end states - don't process them
     if (newState === 'FAIL' || newState === 'DONE') {
       await this.logToFile(`[ExecutionEngine] State changed to ${newState} (end state), stopping execution`)
@@ -181,32 +229,83 @@ export class ExecutionEngine {
         this.onExecutionStart(execution)
       }
 
-      // Get agent for state
-      const agentFactory = this.agents.get(state)
-      if (!agentFactory) {
+      // ENGINE STABILITY: Jeder Zugriff mit Safe Navigation abgesichert
+      if (!this.agents || typeof this.agents.get !== 'function') {
+        await this.logToFile(`[ExecutionEngine] ERROR: agents Map is not initialized or invalid`)
+        throw new Error(`ExecutionEngine: agents Map is not initialized`)
+      }
+      
+      // SAFE NAVIGATION: Prüfe ob State registriert ist
+      const agentFactory = this.agents?.get?.(state)
+      if (!agentFactory || typeof agentFactory !== 'function') {
+        await this.logToFile(`[ExecutionEngine] ERROR: No valid agent factory for state: ${state}`)
         throw new Error(`No agent registered for state: ${state}`)
       }
 
       await this.logToFile(`[ExecutionEngine] Creating agent for state: ${state}`)
+      
+      // SAFE NAVIGATION: Prüfe ob agentFactory eine Funktion ist
+      if (typeof agentFactory !== 'function') {
+        throw new Error(`Agent factory for state ${state} is not a function`)
+      }
+      
       const agent = agentFactory()
+      
+      // SAFE NAVIGATION: Prüfe ob agent erstellt wurde
+      if (!agent) {
+        throw new Error(`Agent factory for state ${state} returned null/undefined`)
+      }
 
-      // Validate agent can run
-      const canRun = await agent.validate()
+      // ENGINE STABILITY: Safe Navigation für validate()
+      let canRun = false
+      try {
+        if (agent && typeof agent.validate === 'function') {
+          canRun = await agent.validate()
+        } else {
+          await this.logToFile(`[ExecutionEngine] WARNING: Agent has no validate() method, skipping validation`)
+          canRun = true // Default to true if no validation method
+        }
+      } catch (validationError) {
+        await this.logToFile(`[ExecutionEngine] ERROR: Agent validation threw error: ${validationError instanceof Error ? validationError.message : String(validationError)}`)
+        throw new Error(`Agent validation failed for state: ${state}: ${validationError instanceof Error ? validationError.message : String(validationError)}`)
+      }
+      
       if (!canRun) {
         throw new Error(`Agent validation failed for state: ${state}`)
       }
 
       await this.logToFile(`[ExecutionEngine] Agent validated, starting execution`)
+      // ENGINE STABILITY: Safe Navigation für alle Agent-Methoden
       // Run agent
-      await agent.onEnter()
+      if (agent && typeof agent.onEnter === 'function') {
+        try {
+          await agent.onEnter()
+        } catch (onEnterError) {
+          await this.logToFile(`[ExecutionEngine] WARNING: agent.onEnter() failed: ${onEnterError instanceof Error ? onEnterError.message : String(onEnterError)}`)
+          // Continue execution even if onEnter fails
+        }
+      }
+      
       try {
-        await agent.execute()
-        await this.logToFile(`[ExecutionEngine] Agent execute() completed successfully`)
+        if (agent && typeof agent.execute === 'function') {
+          await agent.execute()
+          await this.logToFile(`[ExecutionEngine] Agent execute() completed successfully`)
+        } else {
+          throw new Error(`Agent has no execute() method`)
+        }
       } catch (error) {
         await this.logToFile(`[ExecutionEngine] Agent execute() failed: ${error instanceof Error ? error.message : String(error)}`)
         throw error
       } finally {
-        await agent.onExit()
+        // ENGINE STABILITY: Safe Navigation für onExit()
+        if (agent && typeof agent.onExit === 'function') {
+          try {
+            await agent.onExit()
+          } catch (onExitError) {
+            await this.logToFile(`[ExecutionEngine] WARNING: agent.onExit() failed: ${onExitError instanceof Error ? onExitError.message : String(onExitError)}`)
+            // Don't throw - onExit errors shouldn't fail execution
+          }
+        }
       }
       
       await this.logToFile(`[ExecutionEngine] Agent execution completed for state: ${state}`)
@@ -214,6 +313,14 @@ export class ExecutionEngine {
       // Mark execution as complete
       execution.completedAt = new Date()
       this.currentExecution = null
+
+      // Record execution provenance for audit trail
+      await recordProvenance(
+        execution.id,
+        execution.startedAt,
+        execution.completedAt,
+        state
+      ).catch(() => { /* non-fatal */ })
 
       if (this.onExecutionComplete) {
         this.onExecutionComplete(execution)

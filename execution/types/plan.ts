@@ -20,6 +20,8 @@ export interface Step {
   description: string
   type: 'create' | 'modify' | 'delete' | 'verify'
   files: string[]
+  /** Requirement IDs this step implements (e.g. REQ-001, REQ-002) */
+  requirementIds?: string[]
   validation?: ValidationRule[]
   estimatedTime: number
   completed?: boolean

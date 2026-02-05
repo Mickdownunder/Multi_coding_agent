@@ -4,6 +4,8 @@ import { join } from 'path'
 import { StateWatcher } from '../watcher'
 import { ContextOptimizer } from '../services/context-optimizer'
 import { TokenBudgetService } from '../services/token-budget-service'
+import { parseIntent } from '../services/intent-parser'
+import { saveIntentSnapshot } from '../services/intent-snapshot'
 import { Plan } from '../types/plan'
 
 const CONTROL_DIR = join(process.cwd(), 'control')
@@ -35,17 +37,8 @@ export class PlanAgent extends Agent {
   async execute(): Promise<void> {
     await this.log('Starting plan generation')
 
-    // Read current intent
-    const currentIntent = await readFile(INTENT_FILE, 'utf-8')
-    
-    // Create a simple hash of the intent (first 100 chars of goal section)
-    const intentHash = currentIntent
-      .split('\n')
-      .slice(0, 10)
-      .join(' ')
-      .substring(0, 100)
-      .replace(/\s+/g, ' ')
-      .trim()
+    // Read and parse current intent (structured schema or fallback)
+    const parsedIntent = await parseIntent()
     
     // Check if plan already exists and if it matches current intent
     let shouldRegenerate = true
@@ -53,16 +46,17 @@ export class PlanAgent extends Agent {
       const existingPlan = await readFile(PLAN_FILE, 'utf-8')
       if (existingPlan && existingPlan.trim().length > 0) {
         // Check if plan contains the intent hash or key words from intent
-        const intentKeywords = currentIntent
+        const intentKeywords = parsedIntent.body
           .toLowerCase()
           .split(/\s+/)
           .filter(word => word.length > 4)
           .slice(0, 5)
         
         const planLower = existingPlan.toLowerCase()
+        const matchesHash = existingPlan.includes(parsedIntent.hash)
         const matchesKeywords = intentKeywords.some(keyword => planLower.includes(keyword))
         
-        if (matchesKeywords && existingPlan.length > 500) {
+        if ((matchesHash || matchesKeywords) && existingPlan.length > 500) {
           // Plan seems to match - check if it's a valid plan structure
           if (existingPlan.includes('##') || existingPlan.includes('Phase') || existingPlan.includes('Step')) {
             await this.log('Plan exists and seems to match current intent, skipping generation')
@@ -88,6 +82,9 @@ export class PlanAgent extends Agent {
     const intent = await readFile(INTENT_FILE, 'utf-8')
     const rules = await readFile(RULES_FILE, 'utf-8')
 
+    // Get parsed intent for requirements and hash
+    const intentForPlan = await parseIntent(intent)
+
     // Get context
     const codebase = await this.context.getCodebase()
 
@@ -95,14 +92,19 @@ export class PlanAgent extends Agent {
     await this.log('Calling LLM to generate plan...')
     let planResponse
     try {
-      planResponse = await this.llmService.generatePlan({
-        intent,
-        rules,
-        context: {
-          files: codebase.files.slice(0, 10), // Limit context
-          structure: codebase.structure
-        }
-      })
+      // HEARTBEAT: Wrapper für LLM-Call mit Heartbeat-Logging
+      planResponse = await this.callWithHeartbeat(
+        'Plan Generation',
+        () => this.llmService.generatePlan({
+          intent,
+          rules,
+          requirements: intentForPlan.requirements.length > 0 ? intentForPlan.requirements : undefined,
+          context: {
+            files: codebase.files.slice(0, 10), // Limit context
+            structure: codebase.structure
+          }
+        })
+      )
       await this.log('LLM plan generation completed')
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
@@ -123,12 +125,12 @@ export class PlanAgent extends Agent {
     if (!plan.metadata) {
       plan.metadata = {
         generatedAt: new Date().toISOString(),
-        intentHash: intentHash.substring(0, 50),
+        intentHash: intentForPlan.hash,
         estimatedDuration: plan.phases.reduce((sum, p) => sum + p.steps.length * 5, 0),
         appName: appName
       }
     } else {
-      // Ensure appName is set
+      plan.metadata.intentHash = plan.metadata.intentHash || intentForPlan.hash
       plan.metadata.appName = plan.metadata.appName || appName
     }
 
@@ -147,12 +149,16 @@ export class PlanAgent extends Agent {
     await writeFile(PLAN_FILE, planMarkdown, 'utf-8')
     await this.log('Plan written to plan.md')
 
-    // Commit to Git
+    // Save intent snapshot for delta execution (B3)
+    await saveIntentSnapshot(intentForPlan.hash, intentForPlan.requirements)
+
+    // GIT-ISOLATION: Control files (plan.md) are NOT committed to workspace Git
+    // They are system files in control-system/, not agent work products
+    // Only generated app files in the workspace should be committed
+    await this.log('ℹ️ Plan written to control/plan.md (system file, not committed to workspace Git)')
+    
+    // Check if remote exists, if not, try to create one automatically
     try {
-      await this.gitService.commit('Generate plan from intent', [PLAN_FILE])
-      await this.log('Plan committed to Git')
-      
-      // Check if remote exists, if not, try to create one automatically
       let remoteUrl = await this.gitService.getRemoteUrl('origin')
       
       if (!remoteUrl) {
@@ -174,8 +180,8 @@ export class PlanAgent extends Agent {
         await this.log('ℹ️ No Git remote configured. You can add one manually in the Files tab.')
       }
     } catch (error) {
-      await this.log(`WARNING: Git commit failed: ${error instanceof Error ? error.message : String(error)}`)
-      // Don't fail execution if git commit fails
+      // Remote check/push failed, but don't fail plan generation - just log it
+      await this.log(`WARNING: Git remote check failed: ${error instanceof Error ? error.message : String(error)}`)
     }
 
     // Transition to IMPLEMENT

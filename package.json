@@ -9,7 +9,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "setup-check": "node --loader ts-node/esm scripts/setup-check.ts || node -r ts-node/register scripts/setup-check.ts || echo 'Install ts-node: npm install -D ts-node'",
-    "setup-check:fix": "node --loader ts-node/esm scripts/setup-check.ts --fix || node -r ts-node/register scripts/setup-check.ts --fix || echo 'Install ts-node: npm install -D ts-node'"
+    "setup-check:fix": "node --loader ts-node/esm scripts/setup-check.ts --fix || node -r ts-node/register scripts/setup-check.ts --fix || echo 'Install ts-node: npm install -D ts-node'",
+    "setup-workspace": "tsx scripts/setup-workspace-remote.ts || node --loader ts-node/esm scripts/setup-workspace-remote.ts || echo 'Install tsx: npm install -D tsx'"
   },
   "dependencies": {
     "cmdk": "^1.1.1",
@@ -33,6 +34,7 @@
     "tailwindcss": "^3.4.1",
     "ts-jest": "^29.0.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "5.9.3"
   }
 }

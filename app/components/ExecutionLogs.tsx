@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 interface LogEntry {
   timestamp: string
@@ -98,8 +98,8 @@ export default function ExecutionLogs() {
   }
 
   // Syntax highlighting for terminal-style logs
-  const highlightMessage = (message: string): JSX.Element[] => {
-    const parts: JSX.Element[] = []
+  const highlightMessage = (message: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = []
     let lastIndex = 0
 
     // File operations (Atomic Blue)

@@ -23,8 +23,16 @@ export interface ExecutionConfig {
   checkpointInterval: number
 }
 
+export interface WorkspaceConfig {
+  projectPath: string
+  autoInit: boolean
+  /** Optional: Git remote URL for agent workspace (e.g. https://github.com/user/repo.git) */
+  remoteUrl?: string
+}
+
 export interface SystemConfig {
   llm: LLMConfig
   tokenBudget: TokenBudgetConfig
   execution: ExecutionConfig
+  workspace: WorkspaceConfig
 }

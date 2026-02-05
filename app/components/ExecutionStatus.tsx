@@ -7,6 +7,7 @@ import { Activity, GitBranch, Cpu, Zap, Clock } from 'lucide-react'
 interface Status {
   state: string
   running: boolean
+  idle?: boolean
   currentStep?: string
   lastUpdate: string
   progress?: {
@@ -39,6 +40,7 @@ export default function ExecutionStatus() {
   })
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previousState, setPreviousState] = useState<string | null>(null)
   const startTimeRef = useRef<Date | null>(null)
@@ -53,17 +55,26 @@ export default function ExecutionStatus() {
         setPreviousState(status.state)
       }
       
+      // UI-WAHRHEIT: state.txt ist einzige Quelle, FAIL/DONE/PLAN = nicht running
+      const isRunning = statusData.running && !statusData.idle && 
+                       statusData.state !== 'FAIL' && 
+                       statusData.state !== 'DONE' && 
+                       statusData.state !== 'PLAN'
+      
       setStatus({
         state: statusData.state || 'UNKNOWN',
-        running: statusData.running || false,
+        running: isRunning,
+        idle: statusData.idle || false,
         lastUpdate: new Date().toLocaleTimeString(),
         progress: statusData.progress
       })
 
-      // Start timer when execution starts
-      if (statusData.running && !startTimeRef.current) {
+      // UI-WAHRHEIT: Start timer nur wenn wirklich running (nicht FAIL/DONE/PLAN)
+      const isActuallyRunning = isRunning
+      
+      if (isActuallyRunning && !startTimeRef.current) {
         startTimeRef.current = new Date()
-      } else if (!statusData.running) {
+      } else if (!isActuallyRunning) {
         startTimeRef.current = null
       }
 
@@ -128,20 +139,57 @@ export default function ExecutionStatus() {
     }
     window.addEventListener('dashboard-refresh', handleRefresh)
     
+    // UI-WAHRHEIT: Alle 5 Sekunden Status abfragen, state.txt ist einzige Quelle
     const poll = async () => {
       try {
-        const statusRes = await fetch('/api/execute/status')
+        const statusRes = await fetch(`/api/execute/status?t=${Date.now()}`)
         const statusData = await statusRes.json()
         
-        if (statusData.running && statusData.state !== 'PLAN' && statusData.state !== 'DONE' && statusData.state !== 'FAIL') {
-          fetchStatus()
+        // UI-WAHRHEIT: Wenn Backend 'idle' oder state.txt = FAIL/DONE, sofort auf 0/Inaktiv setzen
+        if (statusData.idle || statusData.state === 'FAIL' || statusData.state === 'DONE' || statusData.state === 'PLAN') {
+          // Setze alle Anzeigen auf 0/Inaktiv
+          setTelemetry(prev => ({
+            ...prev,
+            tokenBurnRate: 0,
+            cpuLoad: 0,
+            memoryUsage: 0
+          }))
+          if (statusData.state === 'FAIL' || statusData.state === 'DONE' || statusData.state === 'PLAN') {
+            startTimeRef.current = null
+          }
         }
+        
+        // Aktualisiere Status (auch wenn idle)
+        setStatus(prev => ({
+          ...prev,
+          state: statusData.state || 'UNKNOWN',
+          running: statusData.running || false,
+          lastUpdate: new Date().toLocaleTimeString(),
+          progress: statusData.progress
+        }))
       } catch (error) {
-        // Ignore errors
+        // Bei Fehler: Setze auf idle
+        setStatus(prev => prev ? {
+          ...prev,
+          running: false,
+          state: 'UNKNOWN',
+          lastUpdate: new Date().toLocaleTimeString()
+        } : {
+          state: 'UNKNOWN',
+          running: false,
+          lastUpdate: new Date().toLocaleTimeString()
+        })
+        setTelemetry(prev => ({
+          ...prev,
+          tokenBurnRate: 0,
+          cpuLoad: 0,
+          memoryUsage: 0
+        }))
       }
     }
     
-    const interval = setInterval(poll, 5000) // Poll every 5 seconds for telemetry
+    // UI-WAHRHEIT: Alle 5 Sekunden Status prüfen
+    const interval = setInterval(poll, 5000)
     return () => {
       clearInterval(interval)
       window.removeEventListener('dashboard-refresh', handleRefresh)
@@ -199,6 +247,30 @@ export default function ExecutionStatus() {
       setError('Failed to connect to server')
     } finally {
       setStopping(false)
+    }
+  }
+
+  const handleReset = async () => {
+    if (!confirm('Reset to PLAN?\n\nThis will:\n- Clear all locks\n- Flush execution queue\n- Reset state to PLAN\n\nYou can then resume from where you left off (completed steps are preserved).')) {
+      return
+    }
+    
+    setResetting(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/execute/reset', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to reset execution')
+      } else {
+        // Trigger global refresh
+        window.dispatchEvent(new Event('dashboard-refresh'))
+        setTimeout(() => fetchStatus(), 1000)
+      }
+    } catch (error) {
+      setError('Failed to connect to server')
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -490,7 +562,7 @@ export default function ExecutionStatus() {
       </div>
 
       {/* Controls */}
-      <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+      <div style={{ display: 'flex', gap: '12px', marginTop: '24px', flexWrap: 'wrap' }}>
         {!status?.running ? (
           <button
             onClick={handleStart}
@@ -506,6 +578,22 @@ export default function ExecutionStatus() {
             className="btn-danger"
           >
             {stopping ? 'Stopping...' : 'Stop Execution'}
+          </button>
+        )}
+        
+        {/* UI-UNLOCK: Reset to PLAN button (shown when in FAIL or DONE state) */}
+        {(status?.state === 'FAIL' || status?.state === 'DONE') && (
+          <button
+            onClick={handleReset}
+            disabled={resetting}
+            className="btn-secondary"
+            style={{
+              background: 'var(--warning-amber)',
+              color: 'var(--bg-void)',
+              border: 'none'
+            }}
+          >
+            {resetting ? 'Resetting...' : 'Reset to PLAN'}
           </button>
         )}
       </div>

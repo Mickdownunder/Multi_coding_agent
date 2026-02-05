@@ -1,6 +1,8 @@
-import { writeFile, readFile, unlink } from 'fs/promises'
-import { join } from 'path'
+import { writeFile, readFile, unlink, mkdir } from 'fs/promises'
+import { join, resolve, dirname } from 'path'
 import { FileValidator, PolicyViolationError } from './file-validator'
+import { Config } from '../config'
+import { WorkspaceIsolationError } from './file-service'
 
 export interface FileOperation {
   type: 'create' | 'modify' | 'delete'
@@ -13,39 +15,89 @@ export class FileTransaction {
   private operations: FileOperation[] = []
   private backups: Map<string, string> = new Map()
   private validator: FileValidator
+  private config: Config
+  private projectPath: string | null = null
 
   constructor() {
     this.validator = new FileValidator()
+    this.config = Config.getInstance()
+  }
+
+  /**
+   * Get the workspace project path from config
+   */
+  private async getProjectPath(): Promise<string> {
+    if (this.projectPath) {
+      return this.projectPath
+    }
+
+    try {
+      await this.config.load()
+      const workspaceConfig = this.config.getWorkspaceConfig()
+      this.projectPath = resolve(workspaceConfig.projectPath)
+      return this.projectPath
+    } catch (error) {
+      throw new Error(`Failed to get project path: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  /**
+   * Resolve a relative path to an absolute path within the workspace
+   */
+  private async resolveWorkspacePath(path: string): Promise<string> {
+    const projectPath = await this.getProjectPath()
+    
+    // If path is already absolute, validate it
+    if (path.startsWith('/')) {
+      const resolvedPath = resolve(path)
+      const resolvedProjectPath = resolve(projectPath)
+      
+      if (!resolvedPath.startsWith(resolvedProjectPath + '/') && resolvedPath !== resolvedProjectPath) {
+        throw new WorkspaceIsolationError(
+          `Path is outside workspace. Attempted: ${path}, Workspace: ${projectPath}`,
+          path,
+          projectPath
+        )
+      }
+      return resolvedPath
+    }
+    
+    // Otherwise, resolve relative to workspace
+    return resolve(projectPath, path)
   }
 
   async addOperation(operation: FileOperation): Promise<void> {
+    // WORKSPACE ISOLATION: Resolve path to workspace
+    const workspacePath = await this.resolveWorkspacePath(operation.path)
+    
     // Create backup before modification
     if (operation.type === 'modify' || operation.type === 'delete') {
       try {
-        const content = await readFile(operation.path, 'utf-8')
-        const backupPath = join(process.cwd(), 'control', '.backups', `${Date.now()}-${operation.path.replace(/\//g, '_')}`)
-        this.backups.set(operation.path, backupPath)
+        const content = await readFile(workspacePath, 'utf-8')
+        const projectPath = await this.getProjectPath()
+        const backupPath = join(projectPath, '.backups', `${Date.now()}-${workspacePath.replace(/\//g, '_')}`)
+        this.backups.set(workspacePath, backupPath)
         operation.backupPath = backupPath
         
         // Ensure backup directory exists
-        const { mkdir } = await import('fs/promises')
-        await mkdir(join(process.cwd(), 'control', '.backups'), { recursive: true })
+        await mkdir(join(projectPath, '.backups'), { recursive: true })
         await writeFile(backupPath, content, 'utf-8')
       } catch (error) {
         // File might not exist, that's okay for create operations
         if (operation.type === 'modify') {
-          throw new Error(`Cannot modify non-existent file: ${operation.path}`)
+          throw new Error(`Cannot modify non-existent file: ${workspacePath}`)
         }
       }
     }
 
-    this.operations.push(operation)
+    // Store workspace path in operation
+    this.operations.push({
+      ...operation,
+      path: workspacePath
+    })
   }
 
   async commit(): Promise<void> {
-    const { mkdir } = await import('fs/promises')
-    const { dirname } = await import('path')
-    
     for (const operation of this.operations) {
       try {
         if (operation.type === 'create' || operation.type === 'modify') {

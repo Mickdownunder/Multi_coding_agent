@@ -24,7 +24,17 @@ export class Config {
 
     try {
       const content = await readFile(CONFIG_FILE, 'utf-8')
-      this.config = JSON.parse(content) as SystemConfig
+      const parsedConfig = JSON.parse(content) as Partial<SystemConfig>
+      
+      // Ensure workspace config exists with defaults
+      if (!parsedConfig.workspace) {
+        parsedConfig.workspace = {
+          projectPath: '/Users/michaellabitzke/agent-workspace',
+          autoInit: true
+        }
+      }
+      
+      this.config = parsedConfig as SystemConfig
       
       // Resolve environment variable references
       this.config = await this.resolveEnvVars(this.config)
@@ -77,5 +87,13 @@ export class Config {
 
   getExecutionConfig() {
     return this.getConfig().execution
+  }
+
+  getWorkspaceConfig() {
+    return this.getConfig().workspace
+  }
+
+  getProjectPath(): string {
+    return this.getWorkspaceConfig().projectPath
   }
 }

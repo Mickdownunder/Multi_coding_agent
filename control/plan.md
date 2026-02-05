@@ -1,61 +1,47 @@
 # Plan
 
-Generated: 2026-02-04T22:02:29.657Z
-Estimated Duration: 35 minutes
+Generated: 2026-02-04T23:20:47.967Z
+Estimated Duration: 45 minutes
 
-## Type Definition
+## Phase 4: UI Verification & Type Safety Audit
 
-Establish exhaustive type safety for password statistics and entropy telemetry.
-
-### Steps
-
-- [ ] define-password-types: Implement the PasswordStats interface in types/password.ts with strict typing for entropy, crack time, and complexity levels. Ensure zero usage of 'any'.
-  - Files: types/password.ts
-
-## Core Logic Implementation
-
-Develop high-performance, non-blocking entropy calculation logic.
-
-**Dependencies:** define-password-types
+Verification of user interface components with a focus on eliminating 'any' types and ensuring workspace consistency.
 
 ### Steps
 
-- [ ] implement-entropy-logic: Create optimized entropy calculation in lib/utils/entropy.ts utilizing microtasks (queueMicrotask) to ensure UI responsiveness during calculation.
-  - Files: lib/utils/entropy.ts
+- [ ] step-9: Audit all components in app/components and components/ for 'any' types and missing prop definitions
+  - Files: app/components/ExecutionMonitor.tsx, app/components/IntentAssistant.tsx, app/components/StateMachine.tsx, components/TodoList.tsx
+- [x] step-10: Refactor UI components to use strict TypeScript interfaces for props and state
+  - Files: types/api.ts, types/todo.ts, app/components/ExecutionMonitor.tsx, app/components/IntentAssistant.tsx
+- [x] step-11: Implement automated type-checking script to ensure no 'any' types exist in the workspace
+  - Files: scripts/check-no-any.ts
 
-## Component Development
+## Phase 5: Workspace Consistency & Service Alignment
 
-Build the visual telemetry component with Tailwind CSS and accessibility features.
+Ensuring all services and agents adhere to the strict type safety rules and workspace structure.
 
-**Dependencies:** implement-entropy-logic
-
-### Steps
-
-- [x] build-security-telemetry-component: Develop SecurityTelemetry.tsx using Tailwind CSS. Implement the tri-color progress bar (Red/Yellow/Green), Atomic Blue accents, and the 'Cyber Lime' high-visibility state for entropy > 128 bits. Include full ARIA labels.
-  - Files: app/components/SecurityTelemetry.tsx
-
-## Integration & Standards
-
-Integrate the widget into the Mission Control Center and align with Next.js 16 standards.
-
-**Dependencies:** build-security-telemetry-component
+**Dependencies:** Phase 4
 
 ### Steps
 
-- [x] integrate-widget-dashboard: Embed the SecurityTelemetry component into the main dashboard page, ensuring it functions correctly within a Next.js 16 Server Component environment.
-  - Files: app/page.tsx
-- [ ] update-metadata-api: Configure the page metadata using the Next.js 16 Metadata API for SEO and security headers compliance.
-  - Files: app/layout.tsx
+- [ ] step-12: Validate execution services for consistent error handling and type-safe return values
+  - Files: execution/services/file-validator.ts, execution/services/llm-service.ts, execution/services/token-budget-service.ts
+- [ ] step-13: Update file-validator service to enforce 'No any' policy during IMPLEMENT state transitions
+  - Files: execution/services/file-validator.ts
+- [x] step-14: Verify consistency between control/progress.json and the actual filesystem state
+  - Files: control/progress.json, execution/services/task-service.ts
 
-## Verification
+## Phase 6: Final Verification & Reporting
 
-Verify architectural compliance and performance standards.
+Final validation of the system against intent requirements and generation of the verification report.
 
-**Dependencies:** integrate-widget-dashboard, update-metadata-api
+**Dependencies:** Phase 5
 
 ### Steps
 
-- [ ] verify-type-safety: Execute npx tsc --noEmit to confirm strict TypeScript compliance and absence of 'any' types.
-  - Files: types/password.ts, lib/utils/entropy.ts, app/components/SecurityTelemetry.tsx
-- [ ] verify-build-performance: Run npm run build to ensure Next.js 16 compatibility and optimized bundle output.
+- [ ] step-15: Execute full build and type-check command (npm run build && npx tsc --noEmit)
+- [ ] step-16: Generate comprehensive report.md detailing UI verification results and type safety compliance
+  - Files: control/report.md
+- [ ] step-17: Transition state to DONE upon successful verification of all criteria
+  - Files: control/state.txt
 

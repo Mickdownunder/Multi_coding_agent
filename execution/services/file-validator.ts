@@ -181,11 +181,31 @@ export class FileValidator {
             // Check if there's an exception comment nearby
             const sourceText = sourceFile.getFullText()
             const nodeStart = node.getStart(sourceFile)
+            const { line: lineNum } = sourceFile.getLineAndCharacterOfPosition(nodeStart)
             const lineStart = sourceText.lastIndexOf('\n', nodeStart) + 1
-            const lineText = sourceText.substring(lineStart, nodeStart + 100)
+            const lineEnd = sourceText.indexOf('\n', nodeStart)
+            const lineText = sourceText.substring(lineStart, lineEnd === -1 ? sourceText.length : lineEnd)
+            
+            // Extract code context (3 lines before and after)
+            const lines = sourceText.split('\n')
+            const contextStart = Math.max(0, lineNum - 2)
+            const contextEnd = Math.min(lines.length, lineNum + 3)
+            const contextLines = lines.slice(contextStart, contextEnd)
+            const contextCode = contextLines.map((l, i) => {
+              const actualLineNum = contextStart + i + 1
+              const marker = actualLineNum === lineNum + 1 ? '>>> ' : '    '
+              return `${marker}${actualLineNum}: ${l}`
+            }).join('\n')
             
             if (!lineText.includes('// eslint-disable') && !lineText.includes('// @ts-ignore')) {
-              errors.push('POLICY VIOLATION: Use of "any" type is forbidden. Use proper TypeScript types.')
+              const detailedError = `POLICY VIOLATION: Use of "any" type is forbidden at line ${lineNum + 1}.\n\n` +
+                `File: ${filePath}\n` +
+                `Line: ${lineNum + 1}\n` +
+                `Code:\n${contextCode}\n\n` +
+                `Fix: Replace "any" with a specific TypeScript type (e.g., "unknown", "string", "number", or a custom interface).\n` +
+                `Example: Change "const x: any = ..." to "const x: string = ..." or "const x: MyType = ..."`
+              
+              errors.push(detailedError)
               // HARD ENFORCEMENT: Return immediately on first violation
               return {
                 valid: false,
@@ -200,11 +220,31 @@ export class FileValidator {
             if (ts.isTypeReferenceNode(node.type) && ts.isIdentifier(node.type.typeName) && node.type.typeName.text === 'any') {
               const sourceText = sourceFile.getFullText()
               const nodeStart = node.getStart(sourceFile)
+              const { line: lineNum } = sourceFile.getLineAndCharacterOfPosition(nodeStart)
               const lineStart = sourceText.lastIndexOf('\n', nodeStart) + 1
-              const lineText = sourceText.substring(lineStart, nodeStart + 100)
+              const lineEnd = sourceText.indexOf('\n', nodeStart)
+              const lineText = sourceText.substring(lineStart, lineEnd === -1 ? sourceText.length : lineEnd)
+              
+              // Extract code context (3 lines before and after)
+              const lines = sourceText.split('\n')
+              const contextStart = Math.max(0, lineNum - 2)
+              const contextEnd = Math.min(lines.length, lineNum + 3)
+              const contextLines = lines.slice(contextStart, contextEnd)
+              const contextCode = contextLines.map((l, i) => {
+                const actualLineNum = contextStart + i + 1
+                const marker = actualLineNum === lineNum + 1 ? '>>> ' : '    '
+                return `${marker}${actualLineNum}: ${l}`
+              }).join('\n')
               
               if (!lineText.includes('// eslint-disable') && !lineText.includes('// @ts-ignore')) {
-                errors.push('POLICY VIOLATION: Use of "any" type is forbidden. Use proper TypeScript types.')
+                const detailedError = `POLICY VIOLATION: Use of "any" type is forbidden at line ${lineNum + 1}.\n\n` +
+                  `File: ${filePath}\n` +
+                  `Line: ${lineNum + 1}\n` +
+                  `Code:\n${contextCode}\n\n` +
+                  `Fix: Replace "any" with a specific TypeScript type (e.g., "unknown", "string", "number", or a custom interface).\n` +
+                  `Example: Change "const x: any = ..." to "const x: string = ..." or "const x: MyType = ..."`
+                
+                errors.push(detailedError)
                 // HARD ENFORCEMENT: Return immediately on first violation
                 return {
                   valid: false,

@@ -9,6 +9,7 @@ const STATE_FILE = join(CONTROL_DIR, 'state.txt')
 
 export async function GET() {
   try {
+    // UI-WAHRHEIT: state.txt ist die einzige Quelle der Wahrheit
     const state = (await readFile(STATE_FILE, 'utf-8')).trim()
     
     let progress = { completedSteps: [] as string[] }
@@ -19,10 +20,11 @@ export async function GET() {
       // Progress file doesn't exist
     }
 
-    // Only IMPLEMENT and VERIFY states mean execution is actively running
-    // PLAN = ready but not running (waiting for user to start)
-    // DONE/FAIL = finished
+    // UI-WAHRHEIT: Nur IMPLEMENT und VERIFY sind aktiv laufend
+    // FAIL, DONE, PLAN = NICHT running (idle)
+    // state.txt ist die einzige Quelle der Wahrheit
     const running = state === 'IMPLEMENT' || state === 'VERIFY'
+    const idle = state === 'PLAN' || state === 'FAIL' || state === 'DONE'
 
     // Calculate progress percentage from plan.md
     let totalSteps = 0
@@ -42,13 +44,14 @@ export async function GET() {
 
     return NextResponse.json({
       state,
+      running,
+      idle,
       progress: {
         ...progress,
         totalSteps,
         completedSteps,
         progressPercent
-      },
-      running
+      }
     })
   } catch (error) {
     return NextResponse.json(

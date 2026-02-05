@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
+import { StateWatcher } from '../../../execution/watcher'
 
 const CONTROL_DIR = join(process.cwd(), 'control')
 
@@ -94,6 +95,21 @@ export async function POST(request: NextRequest) {
     
     const filePath = join(CONTROL_DIR, filename)
     await writeFile(filePath, content, 'utf-8')
+
+    // B5 Intent-as-Orchestration: When intent.md is saved and state is DONE/FAIL, auto-transition to PLAN
+    if (filename === 'intent.md') {
+      try {
+        const watcher = new StateWatcher()
+        const currentState = await watcher.readState()
+        if (currentState === 'DONE' || currentState === 'FAIL') {
+          await watcher.writeState('PLAN')
+          // Response can include hint for UI
+        }
+      } catch {
+        // Non-fatal: state transition is best-effort
+      }
+    }
+
     return NextResponse.json({ filename, success: true })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
